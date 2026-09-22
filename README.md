@@ -40,7 +40,11 @@ scoop install k0ngk0ng/wire-talk
 
 ### Shell 补全
 
-`wirectl talk` 提供 bash 和 zsh 补全脚本。加入当前 shell 会话：
+`wirectl talk` 提供 bash 和 zsh 补全脚本。Homebrew 安装规则会将脚本安装到标准
+补全目录；zsh 需在 `fpath` 包含 Homebrew 的 `share/zsh/site-functions` 后运行
+`compinit`，bash 需启用 bash-completion。升级后打开新终端加载。
+
+v0.1.5 的 Homebrew 包遗漏了补全安装步骤。该版本或手动安装时，可加入当前 shell 会话：
 
 ```sh
 # bash
@@ -257,3 +261,17 @@ Homebrew tap 与 Scoop bucket 各自的 `Sync talk releases` Actions 每小时�
 Release，独立核对 GitHub 摘要和 SHA256SUMS，再做原生安装测试；通过才提交包定义。
 可手动触发同步。这个流程使用包仓库自己的 GITHUB_TOKEN，不需要跨仓库个人令牌。
 同步可能受 GitHub 调度延迟影响。维护用工作流源文件在 `packaging/`。
+
+### 本机会话静音
+
+```sh
+wirectl talk mute input      # 麦克风禁音，对方听不到你（也可简写 mute）
+wirectl talk unmute input    # 恢复麦克风（也可简写 unmute）
+wirectl talk mute output     # 本地播放静音，你听不到对方
+wirectl talk unmute output   # 恢复本地播放
+wirectl talk status          # 查看输入、输出是否静音
+```
+
+输入和输出独立控制，只作用于当前 talk 会话，不修改系统音量或其他应用。
+输出静音时仍接收并消耗音频，恢复播放不会重播静音期间的内容。
+重启会话后恢复非静音状态。升级后需重启后台进程才能使用新的输出静音功能。

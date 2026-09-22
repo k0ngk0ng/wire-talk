@@ -104,7 +104,10 @@ _wirectl_talk_completion() {
             options="--version --archive --checksums --state-dir --help"
             COMPREPLY=( $(compgen -W "$options" -- "$cur") )
             ;;
-        invite|mute|unmute|version)
+        mute|unmute)
+            COMPREPLY=( $(compgen -W "input output --state-dir --help" -- "$cur") )
+            ;;
+        invite|version)
             COMPREPLY=( $(compgen -W "--state-dir --help" -- "$cur") )
             ;;
     esac

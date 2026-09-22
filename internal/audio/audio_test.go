@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"bytes"
 	"encoding/binary"
 	"sync/atomic"
 	"testing"
@@ -47,5 +48,18 @@ func TestSpeakerGuardEnergy(t *testing.T) {
 	}
 	if !audible(pcm) {
 		t.Fatal("speaker output did not gate microphone")
+	}
+}
+
+func TestMutedPlaybackConsumesAudioAndResumesAtCurrentPosition(t *testing.T) {
+	frame := []byte{1, 2, 3, 4, 5, 6}
+	out := []byte{99, 99, 99, 99}
+	n := copyPlayback(out, frame, true)
+	if n != 4 || !bytes.Equal(out, []byte{0, 0, 0, 0}) {
+		t.Fatalf("muted playback: %v (%d consumed)", out, n)
+	}
+	n = copyPlayback(out[:2], frame[n:], false)
+	if n != 2 || !bytes.Equal(out[:2], []byte{5, 6}) {
+		t.Fatalf("resumed playback replayed old audio: %v", out)
 	}
 }

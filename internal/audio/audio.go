@@ -22,6 +22,7 @@ type Audio struct {
 	context       *malgo.AllocatedContext
 	device        *malgo.Device
 	Muted         atomic.Bool
+	OutputMuted   atomic.Bool
 	Input, Output string
 	Stopped       chan struct{}
 }
@@ -119,12 +120,12 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 			for len(out) > 0 {
 				if offset == room.FrameBytes {
 					playback(played)
-					if !headphones && audible(played) {
+					if !headphones && !a.OutputMuted.Load() && audible(played) {
 						guardSamples = room.SampleRate / 5
 					}
 					offset = 0
 				}
-				n := copy(out, played[offset:])
+				n := copyPlayback(out, played[offset:], a.OutputMuted.Load())
 				offset += n
 				out = out[n:]
 			}
@@ -155,4 +156,14 @@ func audible(pcm []byte) bool {
 		energy += v * v
 	}
 	return len(pcm) > 0 && energy > int64(len(pcm)/2)*100*100
+}
+
+// copyPlayback consumes the same audio while muted, preventing queued speech
+// from being replayed when output is enabled again.
+func copyPlayback(out, frame []byte, muted bool) int {
+	n := copy(out, frame)
+	if muted {
+		clear(out[:n])
+	}
+	return n
 }

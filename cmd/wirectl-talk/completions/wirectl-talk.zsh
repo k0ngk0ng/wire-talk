@@ -39,10 +39,10 @@ _wirectl_talk_completion() {
             'init:create room config'
             'invite:generate a one-use pairing code'
             'join:join a room or start saved room audio'
-            'mute:mute the local microphone'
+            'mute:mute local input or output'
             'pair:save a room without starting audio'
             'status:show session status'
-            'unmute:unmute the local microphone'
+            'unmute:unmute local input or output'
             'update:install the latest release'
             'version:print version'
             'watch:watch session status'
@@ -122,13 +122,24 @@ _wirectl_talk_completion() {
                 '--checksums[offline SHA256SUMS file]:file:_files' \
                 '--state-dir[configuration directory]:directory:_files -/'
             ;;
-        invite|mute|unmute|version)
+        mute|unmute)
+            _arguments -s \
+                '--state-dir[configuration directory]:directory:_files -/' \
+                '1:audio direction:(input output)'
+            ;;
+        invite|version)
             _arguments -s \
                 '--state-dir[configuration directory]:directory:_files -/'
             ;;
     esac
 }
 
-if (( $+functions[compdef] )); then
-    compdef _wirectl_talk_completion wirectl wirectl-talk
+# Autoloaded completion files must run on the first Tab as well as later calls.
+# When sourced manually, only register the function.
+if [[ $ZSH_EVAL_CONTEXT == *:file ]]; then
+    if (( $+functions[compdef] )); then
+        compdef _wirectl_talk_completion wirectl wirectl-talk
+    fi
+else
+    _wirectl_talk_completion "$@"
 fi

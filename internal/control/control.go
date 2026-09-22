@@ -30,7 +30,7 @@ type Server struct {
 	endpoint Endpoint
 }
 
-func Start(dir string, status func() any, stop func(), mute func(bool)) (*Server, error) {
+func Start(dir string, status func() any, stop func(), mute func(bool), muteOutput func(bool)) (*Server, error) {
 	if err := private.Dir(dir); err != nil {
 		return nil, err
 	}
@@ -82,6 +82,16 @@ func Start(dir string, status func() any, stop func(), mute func(bool)) (*Server
 		mute(false)
 		w.WriteHeader(204)
 	})
+	for path, muted := range map[string]bool{"/mute/output": true, "/unmute/output": false} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "POST" {
+				w.WriteHeader(405)
+				return
+			}
+			muteOutput(muted)
+			w.WriteHeader(204)
+		})
+	}
 	s.server = &http.Server{ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.endpoint.Token)) != 1 {
 			w.WriteHeader(401)

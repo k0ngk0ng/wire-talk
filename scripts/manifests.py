@@ -34,12 +34,16 @@ for system, goos in [('macos', 'darwin'), ('linux', 'linux')]:
     formula += '  end\n'
 formula += '''  def install
     bin.install "bin/wirectl-talk"
+    (bash_completion/"wirectl-talk").write Utils.safe_popen_read(bin/"wirectl-talk", "completion", "bash")
+    (zsh_completion/"_wirectl-talk").write Utils.safe_popen_read(bin/"wirectl-talk", "completion", "zsh")
     (bin/".wire-talk-package-manager").write "homebrew\\n"
     doc.install "README.md", "THIRD_PARTY_NOTICES.md"
     doc.install "licenses"
   end
   test do
     assert_match version.to_s, shell_output("#{bin}/wirectl-talk version")
+    assert_path_exists bash_completion/"wirectl-talk"
+    assert_path_exists zsh_completion/"_wirectl-talk"
     system bin/"wirectl-talk", "init", "--state-dir", testpath/"state"
     assert_path_exists testpath/"state/config.json"
   end

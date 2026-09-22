@@ -19,11 +19,12 @@ import (
 
 type sessionStatus struct {
 	room.Status
-	Input   string    `json:"input"`
-	Output  string    `json:"output"`
-	Muted   bool      `json:"muted"`
-	Started time.Time `json:"started"`
-	Version string    `json:"version"`
+	Input       string    `json:"input"`
+	Output      string    `json:"output"`
+	Muted       bool      `json:"muted"`
+	OutputMuted bool      `json:"output_muted"`
+	Started     time.Time `json:"started"`
+	Version     string    `json:"version"`
 }
 
 func status(ctx context.Context, dir string, watch bool, args []string) error {
@@ -94,17 +95,21 @@ func printStatus(s sessionStatus, watch bool) {
 	if s.Muted {
 		mic = "muted"
 	}
+	output := "on"
+	if s.OutputMuted {
+		output = "muted"
+	}
 	if watch {
-		fmt.Printf("%s  Online | mic: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",
-			time.Now().Format("15:04:05"), mic, len(s.Peers), s.Sent, s.Received, s.Dropped, s.Rejected)
+		fmt.Printf("%s  Online | mic: %s | output: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",
+			time.Now().Format("15:04:05"), mic, output, len(s.Peers), s.Sent, s.Received, s.Dropped, s.Rejected)
 		return
 	}
 	uptime := time.Duration(0)
 	if !s.Started.IsZero() && s.Started.Before(time.Now()) {
 		uptime = time.Since(s.Started).Truncate(time.Second)
 	}
-	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
-		cleanText(s.Input), mic, cleanText(s.Output), cleanText(s.Listen), uptime, cleanText(s.Version))
+	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s (%s)\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
+		cleanText(s.Input), mic, cleanText(s.Output), output, cleanText(s.Listen), uptime, cleanText(s.Version))
 	fmt.Printf("Frames:      %d sent / %d received / %d dropped / %d rejected\n", s.Sent, s.Received, s.Dropped, s.Rejected)
 	if len(s.Peers) == 0 {
 		fmt.Println("Peers:       None connected yet. Invite a member with wirectl talk invite.")
@@ -174,11 +179,27 @@ func muteCommand(ctx context.Context, dir string, muted bool, args []string) err
 	if muted {
 		name, message = "mute", "Microphone muted."
 	}
-	if err := noArguments(name, args); err != nil {
-		return err
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Printf("Usage: wirectl talk %s [input|output] [--state-dir DIR]\nDefaults to input. Applies only to this running talk session.\n", name)
+		return nil
 	}
-	if _, err := control.Request(ctx, dir, "POST", "/"+name); err != nil {
-		return unavailableStatus(dir, err)
+	target := "input"
+	if len(args) == 1 {
+		target = args[0]
+	}
+	if len(args) > 1 || (target != "input" && target != "output") {
+		return fmt.Errorf("usage: %s [input|output]", name)
+	}
+	path := "/" + name
+	if target == "output" {
+		path += "/output"
+		message = "Output unmuted."
+		if muted {
+			message = "Output muted."
+		}
+	}
+	if _, err := control.Request(ctx, dir, "POST", path); err != nil {
+		return fmt.Errorf("cannot %s %s: %w (output control requires an updated running daemon)", name, target, err)
 	}
 	fmt.Println(message)
 	return nil

@@ -103,8 +103,8 @@ func run(ctx context.Context, args []string) error {
 		"daemon": cmd("start | install | stop | status (background audio)", func(c context.Context, a []string) error { return daemon(c, dir, a) }),
 		"status": cmd("Show readable session status; --json for scripts", func(c context.Context, a []string) error { return status(c, dir, false, a) }),
 		"watch":  cmd("Watch readable status; --json for scripts; Ctrl+C only exits watch", func(c context.Context, a []string) error { return status(c, dir, true, a) }),
-		"mute":   cmd("Mute local microphone", func(c context.Context, a []string) error { return muteCommand(c, dir, true, a) }),
-		"unmute": cmd("Unmute local microphone", func(c context.Context, a []string) error { return muteCommand(c, dir, false, a) }),
+		"mute":   cmd("Mute local input or output", func(c context.Context, a []string) error { return muteCommand(c, dir, true, a) }),
+		"unmute": cmd("Unmute local input or output", func(c context.Context, a []string) error { return muteCommand(c, dir, false, a) }),
 	}}
 	return app.Run(ctx, args)
 }
@@ -170,8 +170,8 @@ func join(ctx context.Context, dir string) error {
 	defer cancel()
 	started := time.Now()
 	api, err := control.Start(dir, func() any {
-		return sessionStatus{r.Status(), a.Input, a.Output, a.Muted.Load(), started, version}
-	}, cancel, func(m bool) { a.Muted.Store(m) })
+		return sessionStatus{r.Status(), a.Input, a.Output, a.Muted.Load(), a.OutputMuted.Load(), started, version}
+	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) })
 	if err != nil {
 		return err
 	}
