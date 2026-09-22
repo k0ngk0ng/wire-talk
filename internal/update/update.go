@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/k0ngk0ng/wire-talk/internal/installpath"
 	"io"
 	"net/http"
 	"net/url"
@@ -50,7 +51,7 @@ func Run(ctx context.Context, o Options) (string, error) {
 			return "", err
 		}
 	}
-	target, err = filepath.EvalSymlinks(target)
+	target, err = installpath.Resolve(target)
 	if err != nil {
 		return "", err
 	}

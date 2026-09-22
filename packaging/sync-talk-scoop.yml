@@ -60,7 +60,9 @@ jobs:
           wirectl talk init
           if ($LASTEXITCODE -ne 0) { throw 'init failed' }
           $output = & wirectl talk update 2>&1 | Out-String
-          if ($LASTEXITCODE -eq 0 -or $output -notmatch 'scoop update') { throw 'package marker failed' }
+          $updateExit = $LASTEXITCODE
+          Write-Host "Update exit: $updateExit; output: $output"
+          if ($updateExit -eq 0 -or $output -notmatch 'scoop update') { throw 'package marker failed' }
   publish:
     needs: [prepare, validate]
     if: needs.prepare.outputs.changed == 'true'

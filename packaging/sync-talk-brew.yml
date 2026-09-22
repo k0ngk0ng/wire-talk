@@ -54,6 +54,7 @@ jobs:
           path: .cache/talk
       - run: |
           brew tap k0ngk0ng/tap
+          if brew help trust >/dev/null 2>&1; then brew trust --formula k0ngk0ng/tap/wirectl; fi
           cp .cache/talk/talk.rb "$(brew --repository k0ngk0ng/tap)/Formula/talk.rb"
           brew install k0ngk0ng/tap/talk
           brew test k0ngk0ng/tap/talk

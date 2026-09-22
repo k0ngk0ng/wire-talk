@@ -11,6 +11,9 @@
 ```sh
 # macOS / Linux，Apple Silicon / Intel，amd64 / arm64
 brew install k0ngk0ng/tap/talk
+
+# 新版 Homebrew 若要求信任 wirectl 依赖，先执行后重试安装：
+brew trust --formula k0ngk0ng/tap/wirectl
 ```
 
 ```powershell

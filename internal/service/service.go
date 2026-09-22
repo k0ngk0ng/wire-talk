@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/xml"
 	"fmt"
+	"github.com/k0ngk0ng/wire-talk/internal/installpath"
 	"os"
 	"os/exec"
 	"os/user"
@@ -81,7 +82,7 @@ func Current(state string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	exe, err = filepath.EvalSymlinks(exe)
+	exe, err = installpath.Resolve(exe)
 	if err != nil {
 		return Plan{}, err
 	}
