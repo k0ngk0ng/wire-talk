@@ -19,3 +19,5 @@ func nativeBackends() []malgo.Backend {
 		return []malgo.Backend{malgo.BackendPulseaudio, malgo.BackendAlsa, malgo.BackendJack}
 	}
 }
+
+func beforeDeviceClose() {}

@@ -196,3 +196,36 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
                 proc.wait(timeout=5)
         for log in logs:
             log.close()
+
+# A native backend can hang in ma_device_uninit after control.json is removed.
+# Exercise process exit, recording finalization, and lock release even in that
+# state. The injected hang exists only in the talk_test_audio build.
+import wave
+with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
+    for mode in ('join', '__serve'):
+        profile=Path(directory)/mode
+        def shutdown_call(*args, check=True):
+            return subprocess.run([str(exe),'--state-dir',str(profile),*args],env=env,text=True,capture_output=True,timeout=20,check=check)
+        shutdown_call('init','--listen','127.0.0.1:0')
+        stuck_env=dict(env,WIRE_TALK_TEST_HANG_CLOSE='1')
+        process=subprocess.Popen([str(exe),'--state-dir',str(profile),mode],env=stuck_env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        try:
+            deadline=time.monotonic()+8
+            while time.monotonic()<deadline:
+                if shutdown_call('status','--json',check=False).returncode==0:break
+                time.sleep(.05)
+            else:raise AssertionError('shutdown fixture never became online')
+            recording=Path(directory)/(mode+'.wav')
+            shutdown_call('record','start',str(recording))
+            time.sleep(.15)
+            shutdown_call('daemon','stop')
+            process.communicate(timeout=8)
+            assert process.returncode==1,f'{mode}: stuck native driver must terminate with failure, got {process.returncode}'
+            assert not (profile/'control.json').exists()
+            with wave.open(str(recording),'rb') as f:
+                assert f.getnframes()>0,'recording not finalized after shutdown timeout'
+            shutdown_call('daemon','start')
+            shutdown_call('daemon','stop')
+        finally:
+            if process.poll() is None:process.kill();process.wait(timeout=5)
+    print('Native shutdown hang: foreground/worker exit, WAV finalization and lock recovery passed')

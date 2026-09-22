@@ -2,8 +2,18 @@
 
 package audio
 
-import "github.com/gen2brain/malgo"
+import (
+	"github.com/gen2brain/malgo"
+	"os"
+)
 
 // Integration-test-only driver. Release builds must never use this build tag.
 // See audio_test.go for the upstream enum offset in pinned malgo v0.11.24.
 func nativeBackends() []malgo.Backend { return []malgo.Backend{malgo.Backend(14)} }
+
+// Simulate a native driver stuck during shutdown only in integration builds.
+func beforeDeviceClose() {
+	if os.Getenv("WIRE_TALK_TEST_HANG_CLOSE") == "1" {
+		select {}
+	}
+}

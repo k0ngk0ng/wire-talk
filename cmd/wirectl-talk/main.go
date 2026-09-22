@@ -62,6 +62,9 @@ func run(ctx context.Context, args []string) error {
 		os.Stderr = f
 		for {
 			err = join(ctx, dir)
+			if errors.Is(err, errAudioShutdownTimeout) {
+				return err
+			}
 			if err == nil || ctx.Err() != nil {
 				return nil
 			}
@@ -149,7 +152,7 @@ func initConfig(dir string, args []string) error {
 	fmt.Println("Invite a member: wirectl talk invite. Start audio: wirectl talk join")
 	return nil
 }
-func join(ctx context.Context, dir string) error {
+func join(ctx context.Context, dir string) (result error) {
 	unlock, err := control.Lock(dir)
 	if err != nil {
 		return err
@@ -171,7 +174,11 @@ func join(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer a.Close()
+	defer func() {
+		if err := closeAudioWithin(a.Close, 3*time.Second); err != nil {
+			result = err
+		}
+	}()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	started := time.Now()

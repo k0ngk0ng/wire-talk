@@ -158,7 +158,7 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 	}
 	return a, nil
 }
-func (a *Audio) Close() { a.device.Uninit(); a.context.Uninit(); a.context.Free() }
+func (a *Audio) Close() { beforeDeviceClose(); a.device.Uninit(); a.context.Uninit(); a.context.Free() }
 
 // audible ignores very quiet output so silence does not suppress the microphone.
 // This is half-duplex speaker protection, not acoustic echo cancellation.
