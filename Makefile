@@ -11,5 +11,6 @@ build: prepare
 	go build -trimpath -o bin/wirectl-talk ./cmd/wirectl-talk
 test: prepare
 	go test -race ./...
+	python3 scripts/test-session.py
 check: test
 	go vet ./...

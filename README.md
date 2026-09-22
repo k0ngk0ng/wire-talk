@@ -108,8 +108,8 @@ wirectl talk watch
 
 macOS 使用 LaunchAgent，Linux 使用 systemd user service，Windows 使用登录计划
 任务（交互用户身份，避免 session 0 无法访问音频）。必须先在前台授予麦克风权限。
-注册成功表示系统服务已安装，实际设备在线状态用 `watch` 确认。设备断开导致退出时
-由系统重启尝试恢复；macOS/Linux 约 3 秒，Windows 约 1 分钟。退出登录期间不承诺
+注册成功表示系统服务已安装，实际设备在线状态用 `watch` 确认。设备不可用或端口
+暂时占用时，服务每 3 秒重试；整个进程异常退出时由系统服务管理器重启。退出登录期间不承诺
 音频可用；重新登录后自动启动。`daemon stop` 同时移除当前配置的服务注册，保留
 房间配置。再次 `daemon install` 恢复自启。系统服务实测情况见 [验收记录](docs/VALIDATION.md)。
 

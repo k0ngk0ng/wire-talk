@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -63,7 +64,29 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
         # Start again proves all audio, UDP and process ownership was released.
         command('daemon', 'start')
         command('daemon', 'stop')
-        print('Foreground/background/mute/watch/stop/restart lifecycle passed')
+        # Native service worker must recover from unavailable resources instead
+        # of exhausting a platform service manager's finite restart counter.
+        blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        blocker.bind(('127.0.0.1', 0))
+        config_path = state / 'config.json'
+        config = json.loads(config_path.read_text())
+        config['listen'] = '127.0.0.1:' + str(blocker.getsockname()[1])
+        config_path.write_text(json.dumps(config))
+        worker = subprocess.Popen([str(exe), '__serve'], env=env)
+        try:
+            time.sleep(.3)
+            assert worker.poll() is None
+            blocker.close()
+            wait_online()
+            command('daemon', 'stop')
+            worker.wait(timeout=5)
+            assert worker.returncode == 0
+        finally:
+            blocker.close()
+            if worker.poll() is None:
+                worker.kill()
+                worker.wait()
+        print('Foreground/background/mute/watch/stop/restart/resource recovery lifecycle passed')
     finally:
         command('daemon', 'stop', check=False)
         if foreground.poll() is None:

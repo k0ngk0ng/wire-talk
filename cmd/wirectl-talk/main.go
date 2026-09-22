@@ -60,11 +60,21 @@ func run(ctx context.Context, args []string) error {
 		defer f.Close()
 		os.Stdout = f
 		os.Stderr = f
-		err = join(ctx, dir)
-		if err != nil {
-			fmt.Fprintln(f, "talk:", err)
+		for {
+			err = join(ctx, dir)
+			if err == nil || ctx.Err() != nil {
+				return nil
+			}
+			if st, e := f.Stat(); e == nil && st.Size() > 5<<20 {
+				_ = f.Truncate(0)
+			}
+			fmt.Fprintln(f, time.Now().Format(time.RFC3339), "talk:", err, "— retrying in 3s")
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(3 * time.Second):
+			}
 		}
-		return err
 	}
 	cmd := func(summary string, f func(context.Context, []string) error) cli.Command {
 		return cli.Command{Summary: summary, Run: f}
