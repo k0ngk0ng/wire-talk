@@ -25,6 +25,7 @@ jobs:
           export GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" GOTMPDIR="$PWD/.cache/tmp" TMPDIR="$PWD/.cache/tmp"
           go test -race ./...
           go vet ./...
+          python scripts/test-session.py
       - name: Build and smoke test package
         shell: bash
         run: |

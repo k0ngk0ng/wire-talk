@@ -129,6 +129,8 @@ wirectl talk daemon start
 下载域名，同时核对 GitHub asset SHA-256 和独立 `SHA256SUMS` 后替换插件。
 包管理器安装使用 `brew upgrade k0ngk0ng/tap/talk` / `scoop update talk`。
 内置更新不会改写带包管理标记的安装。wirectl 主程序单独由其包管理器更新。
+原生服务绑定启动时的程序路径；包管理器升级前先 `daemon stop`，升级后重新
+`daemon install`，以免旧安装目录被清理后服务仍引用旧版本。
 
 离线更新：
 
@@ -169,6 +171,9 @@ python3 scripts/test-package.py
 
 推送 `vX.Y.Z` 标签触发 GitHub Actions：五个平台分别原生测试、构建、安装包
 自更新测试，通过后发布二进制包、校验和、构建证明、Homebrew Formula 和 Scoop
-Manifest。配置具备两个包仓库 contents 写权限的 `PACKAGES_TOKEN` 后，工作流
-自动更新 `k0ngk0ng/homebrew-tap` 与 `k0ngk0ng/scoop-bucket`。未配置时定义文件
-仍附在 Release，包管理器发布会标记待办，不会声称可安装。
+Manifest，并执行实际 Homebrew/Scoop 安装检查。
+
+Homebrew tap 与 Scoop bucket 各自的 `Sync talk releases` Actions 每小时检查正式
+Release，独立核对 GitHub 摘要和 SHA256SUMS，再做原生安装测试；通过才提交包定义。
+可手动触发同步。这个流程使用包仓库自己的 GITHUB_TOKEN，不需要跨仓库个人令牌。
+同步可能受 GitHub 调度延迟影响。维护用工作流源文件在 `packaging/`。

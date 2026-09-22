@@ -27,6 +27,7 @@ jobs:
           export GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" GOTMPDIR="$PWD/.cache/tmp" TMPDIR="$PWD/.cache/tmp"
           go test -race ./...
           go vet ./...
+          python scripts/test-session.py
           python scripts/package.py --version "$RELEASE_TAG"
           python scripts/test-package.py
       - uses: actions/upload-artifact@v4
@@ -60,16 +61,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes
-      - name: Publish Homebrew and Scoop definitions
-        env:
-          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo '::warning::PACKAGES_TOKEN is absent; install definitions are attached to the release but tap/bucket publishing is pending.'
-            exit 0
-          fi
-          python3 scripts/publish-manifests.py --version "$RELEASE_TAG"
   install-homebrew:
     needs: publish
     strategy:

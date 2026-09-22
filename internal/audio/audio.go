@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/gen2brain/malgo"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
-	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -146,17 +145,4 @@ func audible(pcm []byte) bool {
 		energy += v * v
 	}
 	return len(pcm) > 0 && energy > int64(len(pcm)/2)*100*100
-}
-
-// Explicit backends prevent miniaudio from silently falling back to a null
-// device and reporting a successful session on a machine without audio.
-func nativeBackends() []malgo.Backend {
-	switch runtime.GOOS {
-	case "darwin":
-		return []malgo.Backend{malgo.BackendCoreaudio}
-	case "windows":
-		return []malgo.Backend{malgo.BackendWasapi, malgo.BackendDsound, malgo.BackendWinmm}
-	default:
-		return []malgo.Backend{malgo.BackendPulseaudio, malgo.BackendAlsa, malgo.BackendJack}
-	}
 }
