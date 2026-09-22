@@ -48,7 +48,18 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as tmp:
         assert len(values)>5000,'recording too short'
         # Evaluate the middle of the recording, after jitter-buffer warmup.
         values=values[3200:-1600]
-        return math.hypot(sum(v*math.sin(2*math.pi*hz*i/16000) for i,v in enumerate(values)),sum(v*math.cos(2*math.pi*hz*i/16000) for i,v in enumerate(values)))/len(values)
+        # UDP jitter can insert/drop an entire 20ms frame. A single coherent
+        # transform over the whole recording then cancels audible tones with
+        # different phases. Measure each audio frame and average its power.
+        window=[0.5-0.5*math.cos(2*math.pi*i/319) for i in range(320)]
+        normalization=sum(window)
+        powers=[]
+        for start in range(0,len(values)-319,320):
+            block=values[start:start+320]
+            re=sum(v*w*math.cos(2*math.pi*hz*i/16000) for i,(v,w) in enumerate(zip(block,window)))
+            im=sum(v*w*math.sin(2*math.pi*hz*i/16000) for i,(v,w) in enumerate(zip(block,window)))
+            powers.append((re*re+im*im)/(normalization*normalization))
+        return math.sqrt(sum(powers)/len(powers))
     try:
         start('receiver');address=status('receiver')['listen']
         start('one',address);start('two',address)
@@ -62,7 +73,8 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as tmp:
         time.sleep(.3)
         all_file=d/'all.wav'
         run('receiver','record','start',str(all_file));time.sleep(1.5);run('receiver','record','stop')
-        assert magnitude(all_file,440)>500 and magnitude(all_file,880)>500,'mixed recording missing speaker'
+        levels=(magnitude(all_file,440),magnitude(all_file,880))
+        assert min(levels)>500, f'mixed recording missing speaker: {levels}'
         selected=d/'selected.wav'
         run('receiver','record','start',str(selected),'--peer',one_id);time.sleep(1.5);run('receiver','record','stop')
         assert magnitude(selected,440)>500,'selected peer missing'
