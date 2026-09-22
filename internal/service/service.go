@@ -4,6 +4,7 @@ package service
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
 	"github.com/k0ngk0ng/wire-talk/internal/installpath"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode/utf16"
 )
 
 type Plan struct {
@@ -110,7 +112,7 @@ func Install(state string) error {
 	if err = os.MkdirAll(filepath.Dir(p.Path), 0700); err != nil {
 		return err
 	}
-	if err = os.WriteFile(p.Path, []byte(p.Content), 0600); err != nil {
+	if err = os.WriteFile(p.Path, encodeDefinition(runtime.GOOS, p.Content), 0600); err != nil {
 		return err
 	}
 	if err = run(p.Start); err != nil {
@@ -132,4 +134,21 @@ func Remove(state string) (bool, error) {
 		return true, err
 	}
 	return true, os.Remove(p.Path)
+}
+
+// Task Scheduler's XML file loader expects UTF-16 even though the logical XML
+// is generated as UTF-8 for portable validation and escaping.
+func encodeDefinition(goos, content string) []byte {
+	if goos != "windows" {
+		return []byte(content)
+	}
+	content = strings.Replace(content, `encoding="UTF-8"`, `encoding="UTF-16"`, 1)
+	units := utf16.Encode([]rune(content))
+	out := make([]byte, 2+len(units)*2)
+	out[0] = 0xff
+	out[1] = 0xfe
+	for i, u := range units {
+		binary.LittleEndian.PutUint16(out[2+i*2:], u)
+	}
+	return out
 }

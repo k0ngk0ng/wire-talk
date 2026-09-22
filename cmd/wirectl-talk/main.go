@@ -245,17 +245,11 @@ func daemon(ctx context.Context, dir string, args []string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := control.Request(ctx, dir, "POST", "/stop"); err != nil {
-			if removed {
-				unlock, e := control.Lock(dir)
-				if e == nil {
-					unlock()
-					fmt.Println("Service stopped")
-					return nil
-				}
-			}
+		if _, err := control.Request(ctx, dir, "POST", "/stop"); err != nil && !removed {
 			return err
 		}
+		// Native managers may close the control socket before audio teardown
+		// releases ownership. Wait for the lock even when the API is gone.
 		for i := 0; i < 100; i++ {
 			unlock, err := control.Lock(dir)
 			if err == nil {
