@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/k0ngk0ng/wire-talk/internal/control"
+	"github.com/k0ngk0ng/wire-talk/internal/media"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
 	"github.com/k0ngk0ng/wire-talk/internal/service"
 )
 
 type sessionStatus struct {
+	Media media.Status `json:"media"`
 	room.Status
 	Input       string    `json:"input"`
 	Output      string    `json:"output"`
@@ -100,8 +102,8 @@ func printStatus(s sessionStatus, watch bool) {
 		output = "muted"
 	}
 	if watch {
-		fmt.Printf("%s  Online | mic: %s | output: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",
-			time.Now().Format("15:04:05"), mic, output, len(s.Peers), s.Sent, s.Received, s.Dropped, s.Rejected)
+		fmt.Printf("%s  Online | mic: %s | output: %s | record: %s | file: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",
+			time.Now().Format("15:04:05"), mic, output, s.Media.Recording.State, s.Media.Input.State, len(s.Peers), s.Sent, s.Received, s.Dropped, s.Rejected)
 		return
 	}
 	uptime := time.Duration(0)
@@ -111,13 +113,15 @@ func printStatus(s sessionStatus, watch bool) {
 	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s (%s)\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
 		cleanText(s.Input), mic, cleanText(s.Output), output, cleanText(s.Listen), uptime, cleanText(s.Version))
 	fmt.Printf("Frames:      %d sent / %d received / %d dropped / %d rejected\n", s.Sent, s.Received, s.Dropped, s.Rejected)
+	printMedia(s.Media)
+	fmt.Printf("Node ID:     %s (current session)\n", s.ID)
 	if len(s.Peers) == 0 {
 		fmt.Println("Peers:       None connected yet. Invite a member with wirectl talk invite.")
 		return
 	}
 	fmt.Printf("Peers:       %d connected\n", len(s.Peers))
 	for _, p := range s.Peers {
-		fmt.Printf("  %s\n", cleanText(p.Address))
+		fmt.Printf("  %s  ID: %s\n", cleanText(p.Address), cleanText(p.ID))
 	}
 }
 

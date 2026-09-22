@@ -40,11 +40,17 @@ sys_license = root / '.cache' / 'go-mod' / 'golang.org' / 'x' / 'sys@v0.31.0' / 
 if sys_license.exists():
     shutil.copyfile(sys_license, licenses / 'x-sys-LICENSE')
 for module, label in [
+    ('github.com/gopxl/beep@v1.4.1', 'beep'),
+    ('github.com/hajimehoshi/go-mp3@v0.3.4', 'go-mp3'),
+    ('github.com/mewkiz/flac@v1.0.8', 'flac'),
+    ('github.com/icza/bitio@v1.1.0', 'bitio'),
+    ('github.com/pkg/errors@v0.9.1', 'pkg-errors'),
     ('github.com/schollz/pake/v3@v3.2.0', 'pake'),
     ('filippo.io/edwards25519@v1.2.0', 'edwards25519'),
     ('github.com/tscholl2/siec@v0.0.0-20240310163802-c2c6f6198406', 'siec'),
 ]:
     shutil.copyfile(root / '.cache' / 'go-mod' / module / 'LICENSE', licenses / (label + '-LICENSE'))
+shutil.copyfile(root / '.cache/go-mod/github.com/mewkiz/pkg@v0.0.0-20230226050401-4010bf0fec14/UNLICENSE', licenses / 'mewkiz-pkg-UNLICENSE')
 goroot = Path(subprocess.check_output(['go', 'env', 'GOROOT'], env=env, text=True).strip())
 # Homebrew keeps the Go license above its libexec GOROOT.
 go_license = goroot / 'LICENSE'

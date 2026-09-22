@@ -63,3 +63,19 @@ func TestMutedPlaybackConsumesAudioAndResumesAtCurrentPosition(t *testing.T) {
 		t.Fatalf("resumed playback replayed old audio: %v", out)
 	}
 }
+
+func TestLevelMeter(t *testing.T) {
+	silence := Measure(make([]byte, 640))
+	if silence.RMS != 0 || silence.Peak != 0 || silence.Clipped {
+		t.Fatal("silence meter")
+	}
+	half := bytes.Repeat([]byte{0, 64}, 320)
+	l := Measure(half)
+	if l.RMS != 0.5 || l.Peak != 0.5 || l.Clipped {
+		t.Fatalf("half scale: %+v", l)
+	}
+	clip := Measure([]byte{0, 128})
+	if !clip.Clipped || clip.Peak != 1 {
+		t.Fatalf("clip: %+v", clip)
+	}
+}

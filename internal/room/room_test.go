@@ -161,3 +161,29 @@ func FuzzPacketOpen(f *testing.F) {
 	f.Add([]byte("WT01"))
 	f.Fuzz(func(t *testing.T, b []byte) { c, _ := newCodec(make([]byte, 32)); c.open(b, time.Now()) })
 }
+
+func TestSelectedRecordingUsesSameClockAndExcludesOtherPeers(t *testing.T) {
+	m := NewMixer()
+	for _, pair := range []struct {
+		id    [16]byte
+		value uint16
+	}{{[16]byte{1}, 1000}, {[16]byte{2}, 2000}} {
+		frame := make([]byte, FrameBytes)
+		for i := 0; i < len(frame); i += 2 {
+			binary.LittleEndian.PutUint16(frame[i:], pair.value)
+		}
+		m.Push(pair.id, 1, frame)
+		m.Push(pair.id, 2, frame)
+	}
+	mixed, selected := make([]byte, FrameBytes), make([]byte, FrameBytes)
+	m.ReadSelected(mixed, selected, [16]byte{1})
+	for i := 0; i < FrameBytes; i += 2 {
+		if binary.LittleEndian.Uint16(mixed[i:]) != 3000 || binary.LittleEndian.Uint16(selected[i:]) != 1000 {
+			t.Fatal("selected peer recording leaked other peer or lost alignment")
+		}
+	}
+	m.ReadSelected(mixed, selected, [16]byte{3})
+	if !bytes.Equal(selected, make([]byte, FrameBytes)) {
+		t.Fatal("missing peer should record silence")
+	}
+}

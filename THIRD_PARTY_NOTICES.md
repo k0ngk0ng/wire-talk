@@ -14,6 +14,12 @@
 - `filippo.io/edwards25519 v1.2.0`: indirect PAKE dependency, BSD 3-Clause.
 - `github.com/tscholl2/siec v0.0.0-20240310163802-c2c6f6198406`: indirect
   PAKE dependency, MIT. Its curve is not selected by wire-talk.
+- `github.com/gopxl/beep v1.4.1`: audio streaming, WAV decoding and resampling, MIT.
+- `github.com/hajimehoshi/go-mp3 v0.3.4`: MP3 decoding, Apache-2.0.
+- `github.com/mewkiz/flac v1.0.8`: FLAC decoding, Unlicense.
+- `github.com/mewkiz/pkg v0.0.0-20230226050401-4010bf0fec14`: FLAC helper code, Unlicense.
+- `github.com/icza/bitio v1.1.0`: bitstream decoding, Apache-2.0.
+- `github.com/pkg/errors v0.9.1`: decoder error context, BSD 2-Clause.
 - Go standard library/runtime: Go BSD-style license.
 
 The application source is MIT licensed; see LICENSE. Module versions and

@@ -2,6 +2,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -30,7 +31,7 @@ type Server struct {
 	endpoint Endpoint
 }
 
-func Start(dir string, status func() any, stop func(), mute func(bool), muteOutput func(bool)) (*Server, error) {
+func Start(dir string, status func() any, stop func(), mute func(bool), muteOutput func(bool), media ...http.Handler) (*Server, error) {
 	if err := private.Dir(dir); err != nil {
 		return nil, err
 	}
@@ -92,7 +93,10 @@ func Start(dir string, status func() any, stop func(), mute func(bool), muteOutp
 			w.WriteHeader(204)
 		})
 	}
-	s.server = &http.Server{ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	if len(media) > 0 {
+		mux.Handle("/media", media[0])
+	}
+	s.server = &http.Server{ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.endpoint.Token)) != 1 {
 			w.WriteHeader(401)
 			return
@@ -109,6 +113,9 @@ func Start(dir string, status func() any, stop func(), mute func(bool), muteOutp
 }
 func (s *Server) Close() { s.server.Close(); os.Remove(s.path) }
 func Request(ctx context.Context, dir, method, path string) ([]byte, error) {
+	return RequestBody(ctx, dir, method, path, nil)
+}
+func RequestBody(ctx context.Context, dir, method, path string, data []byte) ([]byte, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
 	if err != nil {
 		return nil, fmt.Errorf("talk is not running: %w", err)
@@ -121,12 +128,12 @@ func Request(ctx context.Context, dir, method, path string) ([]byte, error) {
 	if err != nil || host != "127.0.0.1" || len(ep.Token) != 64 {
 		return nil, errors.New("invalid local control endpoint")
 	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://"+ep.Address+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, "http://"+ep.Address+path, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+ep.Token)
-	client := http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("talk is not running or unavailable: %w", err)

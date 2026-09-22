@@ -37,6 +37,9 @@ _wirectl_talk_completion() {
             'daemon:start, install, stop, or inspect background audio'
             'devices:list audio devices'
             'init:create room config'
+            'input:send an audio file to peers'
+            'record:record all peers or a selected peer'
+            'test:test a local audio device with a live meter'
             'invite:generate a one-use pairing code'
             'join:join a room or start saved room audio'
             'mute:mute local input or output'
@@ -60,6 +63,29 @@ _wirectl_talk_completion() {
             else
                 _message 'shell (bash or zsh)'
             fi
+            ;;
+        record|input|test)
+            if (( CURRENT == command_index + 1 )); then
+                case "$command" in
+                    record) candidates=(start stop status) ;;
+                    input) candidates=(start pause resume stop status) ;;
+                    test) candidates=(input output) ;;
+                esac
+                _describe 'action' candidates
+                return
+            fi
+            if [[ "$words[$((command_index+1))]" == start ]] && (( CURRENT == command_index + 2 )); then
+                _files
+                return
+            fi
+            _arguments -s \
+                '--mode[file input mode]:mode:(replace mix)' \
+                '--loop[repeat file input]' \
+                '--peer[record one peer]:ID or address:' \
+                '--device[test a specific device]:device ID:' \
+                '--seconds[test duration]:seconds:' \
+                '--json[output JSON]' \
+                '--state-dir[configuration directory]:directory:_files -/'
             ;;
         daemon)
             if (( CURRENT == command_index + 1 )); then

@@ -89,6 +89,9 @@ func (r *Room) Capture(frame []byte) {
 	}
 }
 func (r *Room) Playback(out []byte) { r.mixer.Read(out) }
+func (r *Room) PlaybackSelected(out, selected []byte, peer [16]byte) {
+	r.mixer.ReadSelected(out, selected, peer)
+}
 func (r *Room) Status() Status {
 	r.mu.Lock()
 	defer r.mu.Unlock()

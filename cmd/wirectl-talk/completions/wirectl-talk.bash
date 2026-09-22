@@ -34,7 +34,7 @@ _wirectl_talk_completion() {
     esac
 
     if (( COMP_CWORD == command_index )); then
-        COMPREPLY=( $(compgen -W "completion daemon devices init invite join mute pair status unmute update version watch" -- "$cur") )
+        COMPREPLY=( $(compgen -W "completion daemon devices init input invite join mute pair record status test unmute update version watch" -- "$cur") )
         return 0
     fi
 
@@ -50,6 +50,30 @@ _wirectl_talk_completion() {
             if (( COMP_CWORD == command_index + 1 )); then
                 COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
             fi
+            ;;
+        record|input|test)
+            if (( COMP_CWORD == command_index + 1 )); then
+                case "$command" in
+                    record) options="start stop status" ;;
+                    input) options="start pause resume stop status" ;;
+                    test) options="input output" ;;
+                esac
+                COMPREPLY=( $(compgen -W "$options" -- "$cur") )
+                return 0
+            fi
+            if [[ "$prev" == --mode ]]; then
+                COMPREPLY=( $(compgen -W "replace mix" -- "$cur") ); return 0
+            fi
+            case "$prev" in --peer|--device|--seconds) return 0 ;; esac
+            if [[ "${COMP_WORDS[command_index+1]}" == start ]] && (( COMP_CWORD == command_index + 2 )); then
+                COMPREPLY=( $(compgen -f -- "$cur") ); return 0
+            fi
+            case "$command" in
+                record) options="--peer --json --state-dir --help" ;;
+                input) options="--mode --loop --json --state-dir --help" ;;
+                test) options="--device --seconds --state-dir --help" ;;
+            esac
+            COMPREPLY=( $(compgen -W "$options" -- "$cur") )
             ;;
         daemon)
             if (( COMP_CWORD == command_index + 1 )); then

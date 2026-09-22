@@ -60,7 +60,11 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 	}
 	a := &Audio{context: ctx, Stopped: make(chan struct{}, 1)}
 	fail := func(err error) (*Audio, error) { ctx.Uninit(); ctx.Free(); return nil, err }
-	cfg := malgo.DefaultDeviceConfig(malgo.Duplex)
+	deviceType := malgo.Duplex
+	if input == "none" {
+		deviceType = malgo.Playback
+	}
+	cfg := malgo.DefaultDeviceConfig(deviceType)
 	cfg.SampleRate = room.SampleRate
 	cfg.PeriodSizeInFrames = room.FrameSamples
 	cfg.Capture.Format = malgo.FormatS16
@@ -89,7 +93,11 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 		}
 		return nil, "", fmt.Errorf("audio %s device %q not found; run wirectl talk devices", label, id)
 	}
-	cfg.Capture.DeviceID, a.Input, err = selectDevice(malgo.Capture, input)
+	if input == "none" {
+		a.Input = "disabled (file input only)"
+	} else {
+		cfg.Capture.DeviceID, a.Input, err = selectDevice(malgo.Capture, input)
+	}
 	if err != nil {
 		return fail(err)
 	}
@@ -105,14 +113,19 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 	guardSamples := 0
 	a.device, err = malgo.InitDevice(ctx.Context, cfg, malgo.DeviceCallbacks{
 		Data: func(out, in []byte, _ uint32) {
+			if input == "none" {
+				in = make([]byte, len(out))
+			}
 			for len(in) > 0 {
 				n := min(room.FrameBytes-len(captured), len(in))
 				captured = append(captured, in[:n]...)
 				in = in[n:]
 				if len(captured) == room.FrameBytes {
-					if !a.Muted.Load() && (headphones || guardSamples == 0) {
-						capture(captured)
+					if a.Muted.Load() || (!headphones && guardSamples > 0) {
+						clear(captured)
 					}
+					// Always clock file input, including while microphone is muted.
+					capture(captured)
 					captured = captured[:0]
 					guardSamples = max(0, guardSamples-room.FrameSamples)
 				}

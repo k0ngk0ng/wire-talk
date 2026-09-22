@@ -12,5 +12,6 @@ build: prepare
 test: prepare
 	go test -race ./...
 	python3 scripts/test-session.py
+	python3 scripts/test-media.py
 check: test
 	go vet ./...

@@ -275,3 +275,65 @@ wirectl talk status          # 查看输入、输出是否静音
 输入和输出独立控制，只作用于当前 talk 会话，不修改系统音量或其他应用。
 输出静音时仍接收并消耗音频，恢复播放不会重播静音期间的内容。
 重启会话后恢复非静音状态。升级后需重启后台进程才能使用新的输出静音功能。
+
+## 录制收到的声音
+
+会话运行后，使用绝对路径或相对于当前命令目录的路径开始录音（目录需已存在）：
+
+```sh
+wirectl talk record start ./meeting.wav
+wirectl talk record status
+wirectl talk record stop
+```
+
+默认录制所有对端的混音，不包含自己的麦克风。`mute output` 不影响录音。
+文件为 16 kHz、单声道、16-bit PCM WAV，静音／丢包时保留静音时间，已有文件不会覆盖。
+每次会话仅允许一个录音。磁盘写入失败、写入速度不足或达到 WAV 4 GB 上限会报告错误，
+不会静默丢弃录音。正常停止会话时会完成 WAV 文件头；强制杀进程或断电不保证文件完整。
+
+只录一个节点：
+
+```sh
+wirectl talk status
+wirectl talk record start ./one-peer.wav --peer NODE_ID
+# 也可使用 status 中的 IP:端口
+```
+
+`status` 显示节点的完整会话 ID 和地址。选择地址时会解析为当前 ID；ID 在该节点重启后变化，
+需要停止并重新选择。目标暂时离线期间记录静音，不会自动录入另一个节点。
+`record status --json` 可供脚本读取状态、文件路径、累计字节和错误。
+
+## 音频文件作为输入源
+
+```sh
+wirectl talk input start ./music.mp3                 # 替代麦克风
+wirectl talk input start ./music.flac --mode mix     # 与麦克风混音，先停止已有文件输入
+wirectl talk input start ./notice.wav --loop         # 循环发送
+wirectl talk input pause
+wirectl talk input resume
+wirectl talk input status
+wirectl talk input stop
+```
+
+支持本地 WAV、MP3、FLAC（单／双声道，采样率最高 384 kHz），自动转换为通话所用的
+16 kHz 单声道音频；无需 ffmpeg。WAV 使用解码库支持的 PCM 格式。
+默认 `replace` 替代麦克风，`mix` 饱和混音以免整数溢出。
+文件结束／停止后恢复麦克风；替代模式暂停期间发送静音，混音模式暂停期间保留麦克风。
+麦克风禁音只影响麦克风，不影响文件发送。输入文件不额外在本地播放。
+
+无麦克风的机器可在首次 `init`／`pair` 时指定 `--input none`，仍需一个可用输出设备作为音频时钟。
+现有配置可把 `input` 改为 `none` 后重启会话。`input status --json` 提供状态、发送帧数和缓冲不足计数。
+
+## 本地音频设备测试
+
+```sh
+wirectl talk devices
+wirectl talk test input --device INPUT_ID --seconds 10
+wirectl talk test output --device OUTPUT_ID --seconds 5
+```
+
+不传 `--device` 时使用系统默认设备。测试无需配置房间，不发送网络音频。
+输入测试实时显示 RMS 电平条（dBFS）、峰值和削波提示，可边说话边观察。
+输出测试以较低音量播放带淡入淡出的 440 Hz 间歇测试音；显示的是生成信号电平，
+是否真正从喇叭发声需要听音确认。默认 10 秒，可设置 1–300 秒，Ctrl+C 提前停止。
+设备被其他进程独占时先停止占用它的音频会话再测试。

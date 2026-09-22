@@ -16,6 +16,7 @@ import (
 	"github.com/k0ngk0ng/wire-talk/internal/audio"
 	"github.com/k0ngk0ng/wire-talk/internal/config"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
+	"github.com/k0ngk0ng/wire-talk/internal/media"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
 	"github.com/k0ngk0ng/wire-talk/internal/service"
 	"github.com/k0ngk0ng/wire-talk/internal/update"
@@ -79,6 +80,9 @@ func run(ctx context.Context, args []string) error {
 		return cli.Command{Summary: summary, Run: f}
 	}
 	app := cli.App{Name: "wirectl talk", Description: "direct encrypted microphone and speaker conversations", Commands: map[string]cli.Command{
+		"record":     cmd("Record all received audio or a selected peer", func(c context.Context, a []string) error { return mediaCommand(c, dir, "record", a) }),
+		"input":      cmd("Send an audio file instead of/alongside microphone", func(c context.Context, a []string) error { return mediaCommand(c, dir, "input", a) }),
+		"test":       cmd("Test local input/output with live audio meters", func(c context.Context, a []string) error { return testAudioCommand(c, a) }),
 		"completion": cmd("Print bash or zsh completion script", func(_ context.Context, a []string) error { return completionCommand(a) }),
 		"update":     cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
 		"version": cmd("Print version", func(_ context.Context, a []string) error {
@@ -115,7 +119,7 @@ func initConfig(dir string, args []string) error {
 	}
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.StringVar(&c.Listen, "listen", c.Listen, "UDP listen address")
-	fs.StringVar(&c.Input, "input", "", "input device ID (default device when empty)")
+	fs.StringVar(&c.Input, "input", "", "input device ID, or none for file-only input (default device when empty)")
 	fs.StringVar(&c.Output, "output", "", "output device ID (default device when empty)")
 	fs.BoolVar(&c.Headphones, "headphones", false, "allow full duplex; disable speaker feedback guard when using headphones")
 	keyFile := fs.String("key-file", "", "read another member's room key from a private file")
@@ -161,7 +165,9 @@ func join(ctx context.Context, dir string) error {
 		return err
 	}
 	defer r.Close()
-	a, err := audio.Open(c.Input, c.Output, c.Headphones, r.Capture, r.Playback)
+	m := media.New(r)
+	defer m.Close()
+	a, err := audio.Open(c.Input, c.Output, c.Headphones, m.Capture, m.Playback)
 	if err != nil {
 		return err
 	}
@@ -170,8 +176,8 @@ func join(ctx context.Context, dir string) error {
 	defer cancel()
 	started := time.Now()
 	api, err := control.Start(dir, func() any {
-		return sessionStatus{r.Status(), a.Input, a.Output, a.Muted.Load(), a.OutputMuted.Load(), started, version}
-	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) })
+		return sessionStatus{Status: r.Status(), Input: a.Input, Output: a.Output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: m.Status()}
+	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) }, m)
 	if err != nil {
 		return err
 	}

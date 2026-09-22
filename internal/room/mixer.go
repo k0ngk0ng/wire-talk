@@ -45,7 +45,11 @@ func (m *Mixer) Push(id [16]byte, seq uint64, pcm []byte) {
 	}
 	s.frames = append(s.frames, append([]byte(nil), pcm...))
 }
-func (m *Mixer) Read(out []byte) {
+func (m *Mixer) Read(out []byte) { m.ReadSelected(out, nil, [16]byte{}) }
+
+// ReadSelected exposes one speaker at exactly the same playback clock as the mix.
+func (m *Mixer) ReadSelected(out, selected []byte, peer [16]byte) {
+	clear(selected)
 	clear(out)
 	if len(out) != FrameBytes {
 		return
@@ -69,6 +73,9 @@ func (m *Mixer) Read(out []byte) {
 			continue
 		}
 		frame := s.frames[0]
+		if id == peer {
+			copy(selected, frame)
+		}
 		s.frames = s.frames[1:]
 		for i := range sums {
 			sums[i] += int32(int16(binary.LittleEndian.Uint16(frame[i*2:])))
