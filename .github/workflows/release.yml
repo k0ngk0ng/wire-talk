@@ -28,6 +28,7 @@ jobs:
           go test -race ./...
           go vet ./...
           python scripts/test-session.py
+          python scripts/test-service.py
           python scripts/package.py --version "$RELEASE_TAG"
           python scripts/test-package.py
       - uses: actions/upload-artifact@v4

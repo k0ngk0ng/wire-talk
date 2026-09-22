@@ -26,6 +26,7 @@ jobs:
           go test -race ./...
           go vet ./...
           python scripts/test-session.py
+          python scripts/test-service.py
       - name: Build and smoke test package
         shell: bash
         run: |
