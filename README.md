@@ -6,14 +6,18 @@
 
 ## 安装
 
-正式 Release 和包定义发布后：
+当前正式版本为 0.1.2：
 
 ```sh
 # macOS / Linux，Apple Silicon / Intel，amd64 / arm64
 brew install k0ngk0ng/tap/talk
+```
 
-# 新版 Homebrew 若要求信任 wirectl 依赖，先执行后重试安装：
+新版 Homebrew 若提示尚未信任 `wirectl` 依赖，先执行下面的信任命令，再重试安装：
+
+```sh
 brew trust --formula k0ngk0ng/tap/wirectl
+brew install k0ngk0ng/tap/talk
 ```
 
 ```powershell
