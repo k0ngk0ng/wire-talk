@@ -91,12 +91,15 @@ jobs:
           RELEASE_TAG: ${{ inputs.verify_tag || github.ref_name }}
         run: |
           mkdir -p .cache/package
-          gh release download "$RELEASE_TAG" --pattern talk.rb --dir .cache/package
+          gh release download "$RELEASE_TAG" --pattern '*talk.rb' --dir .cache/package
+          if [ ! -f .cache/package/wire-talk.rb ]; then
+            sed 's/^class Talk < Formula/class WireTalk < Formula/' .cache/package/talk.rb > .cache/package/wire-talk.rb
+          fi
           brew tap k0ngk0ng/tap
           if brew help trust >/dev/null 2>&1; then brew trust --formula k0ngk0ng/tap/wirectl; fi
-          cp .cache/package/talk.rb "$(brew --repository k0ngk0ng/tap)/Formula/talk.rb"
-          brew install k0ngk0ng/tap/talk
-          brew test k0ngk0ng/tap/talk
+          cp .cache/package/wire-talk.rb "$(brew --repository k0ngk0ng/tap)/Formula/wire-talk.rb"
+          brew install k0ngk0ng/tap/wire-talk
+          brew test k0ngk0ng/tap/wire-talk
           test "$(wirectl talk version)" = "${RELEASE_TAG#v}"
           wirectl talk init
           if wirectl talk update > .cache/update-output 2>&1; then exit 1; fi
@@ -128,10 +131,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
-          gh release download $env:RELEASE_TAG --pattern talk.json --dir .cache
+          gh release download $env:RELEASE_TAG --pattern '*talk.json' --dir .cache
           if ($LASTEXITCODE -ne 0) { throw 'release download failed' }
-          Copy-Item .cache/talk.json "$env:SCOOP/buckets/k0ngk0ng/bucket/talk.json"
-          scoop install k0ngk0ng/talk
+          if (!(Test-Path .cache/wire-talk.json)) { Copy-Item .cache/talk.json .cache/wire-talk.json }
+          Copy-Item .cache/wire-talk.json "$env:SCOOP/buckets/k0ngk0ng/bucket/wire-talk.json"
+          scoop install k0ngk0ng/wire-talk
           $version = (& wirectl talk version).Trim()
           if ($LASTEXITCODE -ne 0 -or $version -ne $env:RELEASE_TAG.TrimStart('v')) { throw 'host dispatch failed' }
           wirectl talk init

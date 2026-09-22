@@ -56,7 +56,7 @@ func Run(ctx context.Context, o Options) (string, error) {
 		return "", err
 	}
 	if _, err = os.Lstat(filepath.Join(filepath.Dir(target), ".wire-talk-package-manager")); err == nil {
-		return "", errors.New("package-managed installation: use brew upgrade k0ngk0ng/tap/talk or scoop update talk")
+		return "", errors.New("package-managed installation: use brew upgrade k0ngk0ng/tap/wire-talk or scoop update wire-talk")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}

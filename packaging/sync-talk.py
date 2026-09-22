@@ -45,7 +45,9 @@ for target in targets:
     filename = f'wire-talk-{tag[1:]}-{target}' + ('.zip' if a.kind == 'scoop' else '.tar.gz')
     if digest(filename) != sums[filename]:
         raise ValueError('archive checksum sources disagree')
-name = 'talk.json' if a.kind == 'scoop' else 'talk.rb'
+name = 'wire-talk.json' if a.kind == 'scoop' else 'wire-talk.rb'
+if name not in assets:
+    name = 'talk.json' if a.kind == 'scoop' else 'talk.rb'
 content = fetch(name)
 if a.kind == 'scoop':
     item = json.loads(content)
@@ -55,7 +57,7 @@ if a.kind == 'scoop':
         filename = f'wire-talk-{tag[1:]}-{target}.zip'
         if item['architecture']['64bit']['hash'] != sums[filename] or item['architecture']['64bit']['url'] != base + filename:
             raise ValueError('manifest does not match verified archive')
-    destination = Path('bucket/talk.json')
+    destination = Path('bucket/wire-talk.json')
 else:
     text = content.decode()
     if f'version "{tag[1:]}"' not in text:
@@ -64,12 +66,27 @@ else:
         filename = f'wire-talk-{tag[1:]}-{target}.tar.gz'
         if f'url "{base}{filename}"' not in text or f'sha256 "{sums[filename]}"' not in text:
             raise ValueError('formula does not match verified archives')
-    destination = Path('Formula/talk.rb')
-if destination.exists():
-    old = destination.read_text()
+    # Older releases used the short package name; archives are unchanged.
+    if name == 'talk.rb':
+        text = text.replace('class Talk < Formula', 'class WireTalk < Formula', 1)
+    if not text.startswith('class WireTalk < Formula\n'):
+        raise ValueError('unexpected formula class')
+    content = text.encode()
+    destination = Path('Formula/wire-talk.rb')
+previous = destination if destination.exists() else destination.with_name('talk' + destination.suffix)
+if previous.exists():
+    old = previous.read_text()
     old_version = json.loads(old)['version'] if a.kind == 'scoop' else re.search(r'version "([0-9.]+)"', old)[1]
     if tuple(map(int, old_version.split('.'))) > tuple(map(int, tag[1:].split('.'))):
         raise ValueError('refusing package downgrade')
 destination.parent.mkdir(parents=True, exist_ok=True)
 destination.write_bytes(content)
+if a.kind == 'scoop':
+    # Scoop has no formula aliases. The old name becomes a package containing
+    # only a dependency, so it never installs a second competing executable.
+    legacy = dict(version=tag[1:], description='Compatibility name for wire-talk',
+                  homepage='https://github.com/k0ngk0ng/wire-talk', license='MIT',
+                  depends='k0ngk0ng/wire-talk',
+                  notes='The package is now wire-talk. Use scoop update wire-talk; the command remains wirectl talk.')
+    Path('bucket/talk.json').write_text(json.dumps(legacy, indent=2) + '\n')
 print(f'Verified {destination} for {tag}')

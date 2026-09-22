@@ -10,21 +10,27 @@
 
 ```sh
 # macOS / Linux，Apple Silicon / Intel，amd64 / arm64
-brew install k0ngk0ng/tap/talk
+brew install k0ngk0ng/tap/wire-talk
 ```
 
 新版 Homebrew 若提示尚未信任 `wirectl` 依赖，先执行下面的信任命令，再重试安装：
 
 ```sh
 brew trust --formula k0ngk0ng/tap/wirectl
-brew install k0ngk0ng/tap/talk
+brew install k0ngk0ng/tap/wire-talk
 ```
 
 ```powershell
 # Windows amd64
 scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
-scoop install k0ngk0ng/talk
+scoop install k0ngk0ng/wire-talk
 ```
+
+包名为 `wire-talk`，运行命令仍为 `wirectl talk`。旧的 Homebrew 名称 `talk` 保留为
+别名；已安装旧包时，停止语音后运行 `brew update`、`brew migrate talk`，再使用
+`brew upgrade k0ngk0ng/tap/wire-talk`。Scoop 的旧安装先 `scoop uninstall talk`，再
+`scoop install k0ngk0ng/wire-talk`；房间配置保存在独立的用户配置目录，不随卸载删除。
+迁移完成后重新启动；使用原生自启服务的用户重新执行 `daemon install`。
 
 手动安装：下载 [Releases](https://github.com/k0ngk0ng/wire-talk/releases)
 中对应平台的包，核对 `SHA256SUMS`，将 `bin` 中两个可执行文件放入同一 PATH
@@ -161,7 +167,7 @@ wirectl talk daemon start
 
 `update --version 0.1.0` 可选具体版本；在线下载只接受官方 GitHub Release 及可信
 下载域名，同时核对 GitHub asset SHA-256 和独立 `SHA256SUMS` 后替换插件。
-包管理器安装使用 `brew upgrade k0ngk0ng/tap/talk` / `scoop update talk`。
+包管理器安装使用 `brew upgrade k0ngk0ng/tap/wire-talk` / `scoop update wire-talk`。
 内置更新不会改写带包管理标记的安装。wirectl 主程序单独由其包管理器更新。
 原生服务绑定启动时的程序路径；包管理器升级前先 `daemon stop`，升级后重新
 `daemon install`，以免旧安装目录被清理后服务仍引用旧版本。

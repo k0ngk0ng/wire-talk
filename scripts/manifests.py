@@ -19,7 +19,7 @@ targets = ['darwin-arm64', 'darwin-amd64', 'linux-amd64', 'linux-arm64', 'window
 names = {t: f'wire-talk-{v}-{t}' + ('.zip' if t.startswith('windows') else '.tar.gz') for t in targets}
 hashes = {t: hashlib.sha256((dist / n).read_bytes()).hexdigest() for t, n in names.items()}
 (dist / 'SHA256SUMS').write_text(''.join(f'{hashes[t]}  {names[t]}\n' for t in sorted(targets)))
-formula = f'''class Talk < Formula
+formula = f'''class WireTalk < Formula
   desc "Direct encrypted microphone and speaker conversations"
   homepage "https://github.com/k0ngk0ng/wire-talk"
   version "{v}"
@@ -45,7 +45,7 @@ formula += '''  def install
   end
 end
 '''
-(dist / 'talk.rb').write_text(formula)
+(dist / 'wire-talk.rb').write_text(formula)
 t = 'windows-amd64'
 scoop = dict(version=v, description='Direct encrypted microphone and speaker conversations', homepage='https://github.com/k0ngk0ng/wire-talk', license='MIT', depends='k0ngk0ng/wirectl', architecture={'64bit': dict(url=f'{base}/{names[t]}', hash=hashes[t])}, bin='bin/wirectl-talk.exe', post_install="Set-Content -Path \"$dir\\bin\\.wire-talk-package-manager\" -Value 'scoop' -Encoding Ascii", checkver='github', autoupdate={'architecture': {'64bit': {'url': 'https://github.com/k0ngk0ng/wire-talk/releases/download/v$version/wire-talk-$version-windows-amd64.zip'}}, 'hash': {'url': '$baseurl/SHA256SUMS'}})
-(dist / 'talk.json').write_text(json.dumps(scoop, indent=2) + '\n')
+(dist / 'wire-talk.json').write_text(json.dumps(scoop, indent=2) + '\n')

@@ -19,10 +19,11 @@ jobs:
       - id: sync
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE_VERIFY: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           python3 scripts/sync-talk.py brew
-          if git ls-files --error-unmatch Formula/talk.rb >/dev/null 2>&1 && git diff --quiet -- Formula/talk.rb; then
+          if [ "$FORCE_VERIFY" != true ] && git ls-files --error-unmatch Formula/wire-talk.rb >/dev/null 2>&1 && git diff --quiet -- Formula/wire-talk.rb; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
@@ -31,7 +32,7 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         with:
           name: talk-formula
-          path: Formula/talk.rb
+          path: Formula/wire-talk.rb
   validate:
     needs: prepare
     if: needs.prepare.outputs.changed == 'true'
@@ -55,10 +56,8 @@ jobs:
       - run: |
           brew tap k0ngk0ng/tap
           if brew help trust >/dev/null 2>&1; then brew trust --formula k0ngk0ng/tap/wirectl; fi
-          cp .cache/talk/talk.rb "$(brew --repository k0ngk0ng/tap)/Formula/talk.rb"
-          brew install k0ngk0ng/tap/talk
-          brew test k0ngk0ng/tap/talk
-          test "$(wirectl talk version)" = "$(wirectl-talk version)"
+          cp .cache/talk/wire-talk.rb "$(brew --repository k0ngk0ng/tap)/Formula/wire-talk.rb"
+          bash scripts/test-talk-brew.sh
   publish:
     needs: [prepare, validate]
     if: needs.prepare.outputs.changed == 'true'
@@ -80,7 +79,7 @@ jobs:
       - run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Formula/talk.rb
+          git add Formula/wire-talk.rb
           if ! git diff --cached --quiet; then
             git commit -m 'Update verified talk release'
             git push origin HEAD:main
