@@ -95,14 +95,25 @@ wirectl talk daemon stop
 设备、成员、最近消息时间、发送/接收帧、丢帧、拒绝报文计数和静音状态。
 无音频设备、权限拒绝或端口冲突时不会假报启动成功，详情在状态目录 `daemon.log`。
 
-后台进程当前不注册开机启动；系统退出登录/重启后需要重新运行 start。
-音频设备断开时退出并记录错误，重新连接设备后运行 start。长期运行与登录自启的
-原生服务管理还有待补齐，见 [验收记录](docs/VALIDATION.md)。
+需要登录后自动启动及异常恢复时，先停止手动会话，再注册原生用户服务：
+
+```sh
+wirectl talk daemon stop
+wirectl talk daemon install
+wirectl talk watch
+```
+
+macOS 使用 LaunchAgent，Linux 使用 systemd user service，Windows 使用登录计划
+任务（交互用户身份，避免 session 0 无法访问音频）。必须先在前台授予麦克风权限。
+注册成功表示系统服务已安装，实际设备在线状态用 `watch` 确认。设备断开导致退出时
+由系统重启尝试恢复；macOS/Linux 约 3 秒，Windows 约 1 分钟。退出登录期间不承诺
+音频可用；重新登录后自动启动。`daemon stop` 同时移除当前配置的服务注册，保留
+房间配置。再次 `daemon install` 恢复自启。系统服务实测情况见 [验收记录](docs/VALIDATION.md)。
 
 默认状态目录：macOS 为 `~/Library/Application Support/wirectl/talk`，Linux 为
 `$XDG_CONFIG_HOME/wirectl/talk` 或 `~/.config/wirectl/talk`，Windows 为
 `%AppData%\wirectl\talk`。可用 `--state-dir DIR` 或 `WIRE_TALK_HOME` 指定。
-配置目录应仅当前账号可访问，尤其是 Windows 共享目录需设置用户 ACL。
+配置目录限制为当前用户：Unix 使用 0700，Windows 使用受保护的用户/SYSTEM ACL。
 
 ## 更新
 

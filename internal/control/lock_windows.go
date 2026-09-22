@@ -2,13 +2,13 @@ package control
 
 import (
 	"fmt"
-	"os"
+	"github.com/k0ngk0ng/wire-talk/internal/private"
 	"path/filepath"
 	"syscall"
 )
 
 func Lock(dir string) (func(), error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := private.Dir(dir); err != nil {
 		return nil, err
 	}
 	p, err := syscall.UTF16PtrFromString(filepath.Join(dir, "session.lock"))

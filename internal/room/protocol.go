@@ -27,8 +27,9 @@ type packet struct {
 	Body   []byte
 }
 type codec struct {
-	aead cipher.AEAD
-	seen map[[12]byte]int64
+	lastPrune int64
+	aead      cipher.AEAD
+	seen      map[[12]byte]int64
 }
 
 func newCodec(key []byte) (*codec, error) {
@@ -101,6 +102,10 @@ func (c *codec) open(data []byte, now time.Time) (packet, error) {
 	return p, nil
 }
 func (c *codec) prune(now time.Time) {
+	if now.Unix() == c.lastPrune {
+		return
+	}
+	c.lastPrune = now.Unix()
 	for n, expiry := range c.seen {
 		if expiry < now.Unix() {
 			delete(c.seen, n)

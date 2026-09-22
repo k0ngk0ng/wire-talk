@@ -36,6 +36,11 @@ licenses = stage / 'licenses'
 licenses.mkdir(exist_ok=True)
 malgo = root / '.cache' / 'go-mod' / 'github.com' / 'gen2brain' / 'malgo@v0.11.24'
 shutil.copyfile(malgo / 'LICENSE', licenses / 'malgo-LICENSE')
+sys_license = root / '.cache' / 'go-mod' / 'golang.org' / 'x' / 'sys@v0.31.0' / 'LICENSE'
+if sys_license.exists():
+    shutil.copyfile(sys_license, licenses / 'x-sys-LICENSE')
+goroot = Path(subprocess.check_output(['go', 'env', 'GOROOT'], env=env, text=True).strip())
+shutil.copyfile(goroot / 'LICENSE', licenses / 'Go-LICENSE')
 # miniaudio is embedded in malgo and carries its own dual public-domain/MIT notice.
 header = (malgo / 'miniaudio.h').read_text()
 (licenses / 'miniaudio-LICENSE.txt').write_text(header[header.rfind('ALTERNATIVE 1 - Public Domain'):])

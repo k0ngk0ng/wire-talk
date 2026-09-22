@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/k0ngk0ng/wire-talk/internal/private"
 	"io"
 	"net"
 	"net/http"
@@ -30,7 +31,7 @@ type Server struct {
 }
 
 func Start(dir string, status func() any, stop func(), mute func(bool)) (*Server, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := private.Dir(dir); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(dir, "control.json")

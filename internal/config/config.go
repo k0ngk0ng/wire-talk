@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/k0ngk0ng/wire-talk/internal/private"
 	"os"
 	"path/filepath"
 )
@@ -54,7 +55,7 @@ func Save(dir string, c Config) error {
 	if _, err := c.KeyBytes(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := private.Dir(dir); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")

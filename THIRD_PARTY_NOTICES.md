@@ -6,6 +6,7 @@
 - `github.com/gen2brain/malgo v0.11.24`: native audio bindings, Unlicense.
 - miniaudio (embedded by malgo): public domain or MIT No Attribution,
   selected by the consumer. Its license is included in release archives.
+- `golang.org/x/sys v0.31.0`: Windows security APIs, BSD 3-Clause.
 - Go standard library/runtime: Go BSD-style license.
 
 The application source is MIT licensed; see LICENSE. Module versions and

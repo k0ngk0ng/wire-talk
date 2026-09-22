@@ -7,4 +7,6 @@ require (
 	github.com/k0ngk0ng/wirectl v0.1.0
 )
 
+require golang.org/x/sys v0.31.0
+
 replace github.com/k0ngk0ng/wirectl => ./third_party/wirectl

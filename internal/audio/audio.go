@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/gen2brain/malgo"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -27,7 +28,7 @@ type Audio struct {
 }
 
 func List() ([]Device, error) {
-	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, nil)
+	ctx, err := malgo.InitContext(nativeBackends(), malgo.ContextConfig{}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +51,10 @@ func List() ([]Device, error) {
 	return out, nil
 }
 func Open(input, output string, headphones bool, capture func([]byte), playback func([]byte)) (*Audio, error) {
-	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, nil)
+	return openWithBackends(nativeBackends(), input, output, headphones, capture, playback)
+}
+func openWithBackends(backends []malgo.Backend, input, output string, headphones bool, capture func([]byte), playback func([]byte)) (*Audio, error) {
+	ctx, err := malgo.InitContext(backends, malgo.ContextConfig{}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,4 +146,17 @@ func audible(pcm []byte) bool {
 		energy += v * v
 	}
 	return len(pcm) > 0 && energy > int64(len(pcm)/2)*100*100
+}
+
+// Explicit backends prevent miniaudio from silently falling back to a null
+// device and reporting a successful session on a machine without audio.
+func nativeBackends() []malgo.Backend {
+	switch runtime.GOOS {
+	case "darwin":
+		return []malgo.Backend{malgo.BackendCoreaudio}
+	case "windows":
+		return []malgo.Backend{malgo.BackendWasapi, malgo.BackendDsound, malgo.BackendWinmm}
+	default:
+		return []malgo.Backend{malgo.BackendPulseaudio, malgo.BackendAlsa, malgo.BackendJack}
+	}
 }

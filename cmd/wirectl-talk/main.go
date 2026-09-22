@@ -18,6 +18,7 @@ import (
 	"github.com/k0ngk0ng/wire-talk/internal/config"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
+	"github.com/k0ngk0ng/wire-talk/internal/service"
 	"github.com/k0ngk0ng/wire-talk/internal/update"
 	"github.com/k0ngk0ng/wirectl/cli"
 )
@@ -51,6 +52,20 @@ func run(ctx context.Context, args []string) error {
 			i--
 		}
 	}
+	if len(args) == 1 && args[0] == "__serve" {
+		f, err := os.OpenFile(filepath.Join(dir, "daemon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		os.Stdout = f
+		os.Stderr = f
+		err = join(ctx, dir)
+		if err != nil {
+			fmt.Fprintln(f, "talk:", err)
+		}
+		return err
+	}
 	cmd := func(summary string, f func(context.Context, []string) error) cli.Command {
 		return cli.Command{Summary: summary, Run: f}
 	}
@@ -74,7 +89,7 @@ func run(ctx context.Context, args []string) error {
 			}
 			return join(c, dir)
 		}),
-		"daemon": cmd("start | stop | status (background audio)", func(c context.Context, a []string) error { return daemon(c, dir, a) }),
+		"daemon": cmd("start | install | stop | status (background audio)", func(c context.Context, a []string) error { return daemon(c, dir, a) }),
 		"status": cmd("Show current session status", func(c context.Context, a []string) error { return status(c, dir, false, a) }),
 		"watch":  cmd("Watch status; Ctrl+C only exits watch", func(c context.Context, a []string) error { return status(c, dir, true, a) }),
 		"mute":   cmd("Mute local microphone", func(c context.Context, a []string) error { _, e := control.Request(c, dir, "POST", "/mute"); return e }),
@@ -198,13 +213,37 @@ func status(ctx context.Context, dir string, watch bool, args []string) error {
 }
 func daemon(ctx context.Context, dir string, args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: daemon start | stop | status")
+		return errors.New("usage: daemon start | install | stop | status")
 	}
 	switch args[0] {
 	case "status":
 		return status(ctx, dir, false, nil)
+	case "install":
+		if _, err := config.Load(dir); err != nil {
+			return err
+		}
+		if _, err := control.Request(ctx, dir, "GET", "/status"); err == nil {
+			return errors.New("stop the current session before installing a native service")
+		}
+		if err := service.Install(dir); err != nil {
+			return err
+		}
+		fmt.Println("User service registered; it will run after login and restart on failure. Check: wirectl talk watch")
+		return nil
 	case "stop":
+		removed, err := service.Remove(dir)
+		if err != nil {
+			return err
+		}
 		if _, err := control.Request(ctx, dir, "POST", "/stop"); err != nil {
+			if removed {
+				unlock, e := control.Lock(dir)
+				if e == nil {
+					unlock()
+					fmt.Println("Service stopped")
+					return nil
+				}
+			}
 			return err
 		}
 		for i := 0; i < 100; i++ {
@@ -265,7 +304,7 @@ func daemon(ctx context.Context, dir string, args []string) error {
 		<-done
 		return fmt.Errorf("audio startup timed out; see %s", log.Name())
 	default:
-		return errors.New("usage: daemon start | stop | status")
+		return errors.New("usage: daemon start | install | stop | status")
 	}
 }
 
