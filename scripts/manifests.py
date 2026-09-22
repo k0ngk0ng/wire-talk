@@ -47,5 +47,5 @@ end
 '''
 (dist / 'talk.rb').write_text(formula)
 t = 'windows-amd64'
-scoop = dict(version=v, description='Direct encrypted microphone and speaker conversations', homepage='https://github.com/k0ngk0ng/wire-talk', license='MIT', depends='k0ngk0ng/wirectl', architecture={'64bit': dict(url=f'{base}/{names[t]}', hash=hashes[t])}, bin='bin/wirectl-talk.exe', post_install="Set-Content -Path \"$dir\\bin\\.wire-talk-package-manager\" -Value 'scoop' -Encoding Ascii", checkver='github', autoupdate={'architecture': {'64bit': {'url': 'https://github.com/k0ngk0ng/wire-talk/releases/download/v$version/wire-talk-$version-windows-amd64.zip'}}})
+scoop = dict(version=v, description='Direct encrypted microphone and speaker conversations', homepage='https://github.com/k0ngk0ng/wire-talk', license='MIT', depends='k0ngk0ng/wirectl', architecture={'64bit': dict(url=f'{base}/{names[t]}', hash=hashes[t])}, bin='bin/wirectl-talk.exe', post_install="Set-Content -Path \"$dir\\bin\\.wire-talk-package-manager\" -Value 'scoop' -Encoding Ascii", checkver='github', autoupdate={'architecture': {'64bit': {'url': 'https://github.com/k0ngk0ng/wire-talk/releases/download/v$version/wire-talk-$version-windows-amd64.zip'}}, 'hash': {'url': '$baseurl/SHA256SUMS'}})
 (dist / 'talk.json').write_text(json.dumps(scoop, indent=2) + '\n')

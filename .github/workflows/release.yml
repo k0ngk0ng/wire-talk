@@ -70,3 +70,70 @@ jobs:
             exit 0
           fi
           python3 scripts/publish-manifests.py --version "$RELEASE_TAG"
+  install-homebrew:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+      WIRE_TALK_HOME: ${{ github.workspace }}/.cache/talk-state
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Homebrew/actions/setup-homebrew@082c94ee19e776205cfa8e43802917d1425e2fe7
+        with:
+          stable: true
+      - name: Install release through Homebrew and exercise host dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p .cache/package
+          gh release download "$RELEASE_TAG" --pattern talk.rb --dir .cache/package
+          brew tap k0ngk0ng/tap
+          cp .cache/package/talk.rb "$(brew --repository k0ngk0ng/tap)/Formula/talk.rb"
+          brew install k0ngk0ng/tap/talk
+          brew test k0ngk0ng/tap/talk
+          test "$(wirectl talk version)" = "${RELEASE_TAG#v}"
+          wirectl talk init
+          if wirectl talk update > .cache/update-output 2>&1; then exit 1; fi
+          grep 'brew upgrade' .cache/update-output
+  install-scoop:
+    needs: publish
+    runs-on: windows-latest
+    env:
+      SCOOP: ${{ github.workspace }}/.cache/scoop
+      WIRE_TALK_HOME: ${{ github.workspace }}/.cache/talk-state
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Scoop in the disposable runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SCOOP = [IO.Path]::GetFullPath($env:SCOOP)
+          "SCOOP=$env:SCOOP" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Path .cache -Force | Out-Null
+          Invoke-WebRequest https://get.scoop.sh -OutFile .cache/install-scoop.ps1
+          & .cache/install-scoop.ps1 -RunAsAdmin -ScoopDir $env:SCOOP
+          "$env:SCOOP/shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install release through Scoop and exercise host dispatch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
+          gh release download $env:RELEASE_TAG --pattern talk.json --dir .cache
+          if ($LASTEXITCODE -ne 0) { throw 'release download failed' }
+          Copy-Item .cache/talk.json "$env:SCOOP/buckets/k0ngk0ng/bucket/talk.json"
+          scoop install k0ngk0ng/talk
+          $version = (& wirectl talk version).Trim()
+          if ($LASTEXITCODE -ne 0 -or $version -ne $env:RELEASE_TAG.TrimStart('v')) { throw 'host dispatch failed' }
+          wirectl talk init
+          if ($LASTEXITCODE -ne 0) { throw 'init failed' }
+          $output = & wirectl talk update 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0 -or $output -notmatch 'scoop update') { throw 'package manager protection failed' }
