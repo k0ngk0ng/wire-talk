@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
     def wait_online():
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            r = command('status', check=False)
+            r = command('status', '--json', check=False)
             if r.returncode == 0:
                 return json.loads(r.stdout)
             time.sleep(.05)
@@ -37,17 +37,29 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
     foreground = subprocess.Popen([str(exe), 'join'], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0)
     try:
         assert wait_online()['peers'] == []
+        assert 'State:' in command('status').stdout
+        assert json.loads(command('daemon', 'status', '--json').stdout)['muted'] is False
+        assert 'Usage:' in command('mute', '--help').stdout
+        assert command('mute', 'unexpected', check=False).returncode != 0
+        assert json.loads(command('status', '--json').stdout)['muted'] is False
         assert command('join', check=False).returncode != 0
         assert command('daemon', 'start', check=False).returncode != 0
         command('mute')
-        assert json.loads(command('status').stdout)['muted'] is True
+        assert json.loads(command('status', '--json').stdout)['muted'] is True
         command('unmute')
-        assert json.loads(command('status').stdout)['muted'] is False
+        assert json.loads(command('status', '--json').stdout)['muted'] is False
         watcher = subprocess.Popen([str(exe), 'watch'], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(.15)
         watcher.terminate()
         watcher.wait(timeout=5)
-        assert command('status').returncode == 0
+        assert command('status', '--json').returncode == 0
+        json_watcher = subprocess.Popen([str(exe), 'watch', '--json'], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1.2)
+        json_watcher.terminate()
+        json_out, _ = json_watcher.communicate(timeout=5)
+        snapshots = [json.loads(line) for line in json_out.splitlines()]
+        assert snapshots and all('sent_frames' in s for s in snapshots)
+        assert command('status', '--json').returncode == 0
         # Console-free Windows CI cannot reliably deliver Ctrl+C. Its control
         # stop path is tested; Unix additionally proves SIGINT lifecycle cleanup.
         if os.name == 'nt':
@@ -56,12 +68,12 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
             foreground.send_signal(signal.SIGINT)
         out, err = foreground.communicate(timeout=5)
         assert foreground.returncode == 0, (out, err)
-        assert command('status', check=False).returncode != 0
+        assert command('status', '--json', check=False).returncode != 0
         command('daemon', 'start')
         wait_online()
         assert command('join', check=False).returncode != 0
         command('daemon', 'stop')
-        assert command('status', check=False).returncode != 0
+        assert command('status', '--json', check=False).returncode != 0
         # Start again proves all audio, UDP and process ownership was released.
         command('daemon', 'start')
         command('daemon', 'stop')
@@ -105,7 +117,7 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
     def online(state, minimum_peers=0):
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
-            result = call(state, 'status', check=False)
+            result = call(state, 'status', '--json', check=False)
             if result.returncode == 0:
                 status = json.loads(result.stdout)
                 if len(status['peers']) >= minimum_peers and (minimum_peers == 0 or status['received_frames'] > 0):

@@ -18,8 +18,8 @@ import (
 )
 
 func inviteCommand(ctx context.Context, dir string, args []string) error {
-	if len(args) != 0 {
-		return errors.New("usage: invite [--state-dir DIR]; uses the room's listen address")
+	if err := noArguments("invite", args); err != nil {
+		return err
 	}
 	c, err := config.Load(dir)
 	if errors.Is(err, os.ErrNotExist) {

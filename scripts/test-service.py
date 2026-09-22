@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
         command('daemon', 'install')
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
-            status = command('status', check=False)
+            status = command('status', '--json', check=False)
             if status.returncode == 0:
                 assert json.loads(status.stdout)['input']
                 break
@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
             log = state / 'daemon.log'
             raise AssertionError('Native service failed to become online: ' + (log.read_text() if log.exists() else 'no worker log'))
         command('daemon', 'stop')
-        assert command('status', check=False).returncode != 0
+        assert command('status', '--json', check=False).returncode != 0
         print('Native service registration, audio startup and stop passed')
     finally:
         command('daemon', 'stop', check=False)

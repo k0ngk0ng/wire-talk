@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -28,7 +27,7 @@ var version = "dev"
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := run(ctx, os.Args[1:]); err != nil && !errors.Is(err, context.Canceled) {
+	if err := run(ctx, os.Args[1:]); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "talk:", err)
 		os.Exit(1)
 	}
@@ -80,21 +79,18 @@ func run(ctx context.Context, args []string) error {
 		return cli.Command{Summary: summary, Run: f}
 	}
 	app := cli.App{Name: "wirectl talk", Description: "direct encrypted microphone and speaker conversations", Commands: map[string]cli.Command{
-		"update":  cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
-		"version": cmd("Print version", func(context.Context, []string) error { fmt.Println(version); return nil }),
+		"update": cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
+		"version": cmd("Print version", func(_ context.Context, a []string) error {
+			if err := noArguments("version", a); err != nil {
+				return err
+			}
+			fmt.Println(version)
+			return nil
+		}),
 		"init":    cmd("Create room config (never overwrites)", func(_ context.Context, a []string) error { return initConfig(dir, a) }),
 		"invite":  cmd("Generate a one-use pairing code (5 minutes)", func(c context.Context, a []string) error { return inviteCommand(c, dir, a) }),
 		"pair":    cmd("Save a room using HOST:PORT --code CODE, without starting audio", func(c context.Context, a []string) error { return pairCommand(c, dir, a) }),
-		"devices": cmd("List audio input/output IDs", func(_ context.Context, a []string) error {
-			if len(a) != 0 {
-				return errors.New("usage: devices")
-			}
-			ds, e := audio.List()
-			if e != nil {
-				return e
-			}
-			return json.NewEncoder(os.Stdout).Encode(ds)
-		}),
+		"devices": cmd("List audio devices in a table; --json for scripts", func(_ context.Context, a []string) error { return devicesCommand(a) }),
 		"join": cmd("Join HOST:PORT --code CODE, or start saved room audio; Ctrl+C stops", func(c context.Context, a []string) error {
 			if len(a) > 0 {
 				if err := pairCommand(c, dir, a); err != nil {
@@ -104,13 +100,10 @@ func run(ctx context.Context, args []string) error {
 			return join(c, dir)
 		}),
 		"daemon": cmd("start | install | stop | status (background audio)", func(c context.Context, a []string) error { return daemon(c, dir, a) }),
-		"status": cmd("Show current session status", func(c context.Context, a []string) error { return status(c, dir, false, a) }),
-		"watch":  cmd("Watch status; Ctrl+C only exits watch", func(c context.Context, a []string) error { return status(c, dir, true, a) }),
-		"mute":   cmd("Mute local microphone", func(c context.Context, a []string) error { _, e := control.Request(c, dir, "POST", "/mute"); return e }),
-		"unmute": cmd("Unmute local microphone", func(c context.Context, a []string) error {
-			_, e := control.Request(c, dir, "POST", "/unmute")
-			return e
-		}),
+		"status": cmd("Show readable session status; --json for scripts", func(c context.Context, a []string) error { return status(c, dir, false, a) }),
+		"watch":  cmd("Watch readable status; --json for scripts; Ctrl+C only exits watch", func(c context.Context, a []string) error { return status(c, dir, true, a) }),
+		"mute":   cmd("Mute local microphone", func(c context.Context, a []string) error { return muteCommand(c, dir, true, a) }),
+		"unmute": cmd("Unmute local microphone", func(c context.Context, a []string) error { return muteCommand(c, dir, false, a) }),
 	}}
 	return app.Run(ctx, args)
 }
@@ -176,14 +169,7 @@ func join(ctx context.Context, dir string) error {
 	defer cancel()
 	started := time.Now()
 	api, err := control.Start(dir, func() any {
-		return struct {
-			room.Status
-			Input   string    `json:"input"`
-			Output  string    `json:"output"`
-			Muted   bool      `json:"muted"`
-			Started time.Time `json:"started"`
-			Version string    `json:"version"`
-		}{r.Status(), a.Input, a.Output, a.Muted.Load(), started, version}
+		return sessionStatus{r.Status(), a.Input, a.Output, a.Muted.Load(), started, version}
 	}, cancel, func(m bool) { a.Muted.Store(m) })
 	if err != nil {
 		return err
@@ -201,37 +187,22 @@ func join(ctx context.Context, dir string) error {
 		return errors.New("audio device stopped; reconnect the device and restart talk")
 	}
 }
-func status(ctx context.Context, dir string, watch bool, args []string) error {
-	if len(args) != 0 {
-		return errors.New("usage: status | watch [--state-dir DIR]")
-	}
-	for {
-		b, err := control.Request(ctx, dir, "GET", "/status")
-		if err != nil {
-			if !watch {
-				return err
-			}
-			fmt.Fprintln(os.Stderr, err)
-		} else {
-			fmt.Print(string(b))
-		}
-		if !watch {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(time.Second):
-		}
-	}
-}
 func daemon(ctx context.Context, dir string, args []string) error {
+	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") && (args[0] == "start" || args[0] == "install" || args[0] == "stop") {
+		fmt.Printf("Usage: wirectl talk daemon %s [--state-dir DIR]\n", args[0])
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("Usage: wirectl talk daemon start | install | stop | status [--json]")
+		return nil
+	}
+	if len(args) > 0 && args[0] == "status" {
+		return status(ctx, dir, false, args[1:])
+	}
 	if len(args) != 1 {
 		return errors.New("usage: daemon start | install | stop | status")
 	}
 	switch args[0] {
-	case "status":
-		return status(ctx, dir, false, nil)
 	case "install":
 		if _, err := config.Load(dir); err != nil {
 			return err
@@ -242,7 +213,12 @@ func daemon(ctx context.Context, dir string, args []string) error {
 		if err := service.Install(dir); err != nil {
 			return err
 		}
-		fmt.Println("User service registered; it will run after login and restart on failure. Check: wirectl talk watch")
+		fmt.Println("Login service registered; it will start after login and retry failures.")
+		if _, err := control.Request(ctx, dir, "GET", "/status"); err == nil {
+			fmt.Println("Audio is online.")
+		} else {
+			fmt.Println("Audio is not online yet. Run wirectl talk watch to check startup and device readiness.")
+		}
 		return nil
 	case "stop":
 		removed, err := service.Remove(dir)
@@ -300,7 +276,7 @@ func daemon(ctx context.Context, dir string, args []string) error {
 			}
 			select {
 			case e := <-done:
-				return fmt.Errorf("background startup failed (%v); see %s", e, log.Name())
+				return fmt.Errorf("background startup failed (%v)\n%s\nLog: %s", e, lastDaemonLog(dir), log.Name())
 			case <-ctx.Done():
 				child.Process.Kill()
 				<-done

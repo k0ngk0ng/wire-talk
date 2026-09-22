@@ -76,7 +76,17 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 				return d.ID.Pointer(), d.Name(), nil
 			}
 		}
-		return nil, "", fmt.Errorf("audio device %q not found; run wirectl talk devices", id)
+		label, option := "input (microphone)", "--input"
+		if kind == malgo.Playback {
+			label, option = "output (headphones/speakers)", "--output"
+		}
+		if id == "" {
+			if len(devices) == 0 {
+				return nil, "", fmt.Errorf("no audio %s devices found; connect a device and run wirectl talk devices", label)
+			}
+			return nil, "", fmt.Errorf("no default audio %s device; select a system default or configure %s (see wirectl talk devices)", label, option)
+		}
+		return nil, "", fmt.Errorf("audio %s device %q not found; run wirectl talk devices", label, id)
 	}
 	cfg.Capture.DeviceID, a.Input, err = selectDevice(malgo.Capture, input)
 	if err != nil {

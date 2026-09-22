@@ -6,7 +6,7 @@
 
 ## 安装
 
-数字配对码从 0.1.3 起提供：
+0.1.4 起命令默认输出易读信息，脚本使用 `--json`。数字配对码从 0.1.3 起提供：
 
 ```sh
 # macOS / Linux，Apple Silicon / Intel，amd64 / arm64
@@ -100,7 +100,15 @@ wirectl talk daemon start
 
 ## 音频设备和扬声器防啸叫
 
-`devices` 输出设备名、稳定 ID、方向和是否默认。初始化时绑定一套设备：
+`devices` 默认以表格显示设备名、稳定 ID、输入/输出方向和默认设备标记；没有输入
+或输出设备时会直接提示。脚本读取使用 `--json`，保留原有 JSON 字段：
+
+```sh
+wirectl talk devices          # 便于人阅读的表格（0.1.4 起）
+wirectl talk devices --json   # JSON 数组，供脚本使用
+```
+
+初始化时绑定一套设备：
 
 ```sh
 wirectl talk init --input INPUT_ID --output OUTPUT_ID
@@ -131,8 +139,19 @@ wirectl talk daemon stop
 ```
 
 `daemon start` 分离为后台进程，确认音频设备成功启动后才报告在线。可关闭终端；
-`watch` 每秒打印 JSON，Ctrl+C 只退出观察，不停止后台音频。状态包含输入/输出
-设备、成员、最近消息时间、发送/接收帧、丢帧、拒绝报文计数和静音状态。
+`status` 和 `daemon status` 默认显示易读的状态摘要；`watch` 先显示摘要，再每秒输出
+在线状态、静音、成员数和收发计数。Ctrl+C 只退出观察，不停止后台音频。缺少设备
+或尚未在线时显示启动提示及最近日志，不再只提示缺少 `control.json`。
+需要原有机器可读格式时，显式添加 `--json`（从 0.1.4 起）：
+
+```sh
+wirectl talk status --json
+wirectl talk daemon status --json
+wirectl talk watch --json     # 每行一个 JSON 对象
+```
+
+JSON 保留输入/输出设备、成员、最近消息时间、发送/接收帧、丢帧、拒绝报文计数和
+静音状态。错误写入 stderr，不混入 JSON 输出。`mute` / `unmute` 成功后显示确认信息。
 无音频设备、权限拒绝或端口冲突时不会假报启动成功，详情在状态目录 `daemon.log`。
 
 需要登录后自动启动及异常恢复时，先停止手动会话，再注册原生用户服务：

@@ -1,0 +1,185 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/k0ngk0ng/wire-talk/internal/control"
+	"github.com/k0ngk0ng/wire-talk/internal/room"
+	"github.com/k0ngk0ng/wire-talk/internal/service"
+)
+
+type sessionStatus struct {
+	room.Status
+	Input   string    `json:"input"`
+	Output  string    `json:"output"`
+	Muted   bool      `json:"muted"`
+	Started time.Time `json:"started"`
+	Version string    `json:"version"`
+}
+
+func status(ctx context.Context, dir string, watch bool, args []string) error {
+	name := "status"
+	if watch {
+		name = "watch"
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	asJSON := fs.Bool("json", false, "output JSON for scripts instead of readable status")
+	fs.Usage = func() { fmt.Fprintf(fs.Output(), "Usage: wirectl talk %s [--json]\n", name); fs.PrintDefaults() }
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: %s [--json]", name)
+	}
+	if watch && !*asJSON {
+		fmt.Println("Watching talk. Ctrl+C stops watching; audio keeps running.")
+	}
+	lastError := ""
+	firstSnapshot := true
+	for {
+		b, err := control.Request(ctx, dir, "GET", "/status")
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil {
+			firstSnapshot = true
+			if !*asJSON {
+				err = unavailableStatus(dir, err)
+			}
+			if !watch {
+				return err
+			}
+			if *asJSON || err.Error() != lastError {
+				fmt.Fprintln(os.Stderr, err)
+			}
+			lastError = err.Error()
+		} else {
+			lastError = ""
+			if *asJSON {
+				fmt.Print(string(b))
+			} else {
+				var s sessionStatus
+				if err := json.Unmarshal(b, &s); err != nil {
+					return fmt.Errorf("invalid session status: %w", err)
+				}
+				if watch && firstSnapshot {
+					printStatus(s, false)
+					firstSnapshot = false
+				}
+				printStatus(s, watch)
+			}
+		}
+		if !watch {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+func printStatus(s sessionStatus, watch bool) {
+	mic := "on"
+	if s.Muted {
+		mic = "muted"
+	}
+	if watch {
+		fmt.Printf("%s  Online | mic: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",
+			time.Now().Format("15:04:05"), mic, len(s.Peers), s.Sent, s.Received, s.Dropped, s.Rejected)
+		return
+	}
+	uptime := time.Duration(0)
+	if !s.Started.IsZero() && s.Started.Before(time.Now()) {
+		uptime = time.Since(s.Started).Truncate(time.Second)
+	}
+	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
+		cleanText(s.Input), mic, cleanText(s.Output), cleanText(s.Listen), uptime, cleanText(s.Version))
+	fmt.Printf("Frames:      %d sent / %d received / %d dropped / %d rejected\n", s.Sent, s.Received, s.Dropped, s.Rejected)
+	if len(s.Peers) == 0 {
+		fmt.Println("Peers:       None connected yet. Invite a member with wirectl talk invite.")
+		return
+	}
+	fmt.Printf("Peers:       %d connected\n", len(s.Peers))
+	for _, p := range s.Peers {
+		fmt.Printf("  %s\n", cleanText(p.Address))
+	}
+}
+
+func unavailableStatus(dir string, cause error) error {
+	if _, err := os.Stat(filepath.Join(dir, "config.json")); errors.Is(err, os.ErrNotExist) {
+		return errors.New("no room configured; use wirectl talk invite to create one, or pair HOST:PORT --code CODE to join one")
+	}
+	state := "Audio is offline. Start it with wirectl talk join or wirectl talk daemon start."
+	if plan, err := service.Current(dir); err == nil {
+		if _, err := os.Stat(plan.Path); err == nil {
+			state = "Login service is registered, but audio is not online yet. Check devices with wirectl talk devices."
+		}
+	}
+	if line := lastDaemonLog(dir); line != "" {
+		return fmt.Errorf("%s\nLast log entry: %s", state, line)
+	}
+	if errors.Is(cause, os.ErrNotExist) {
+		return errors.New(state)
+	}
+	return fmt.Errorf("%s\nDetails: %w", state, cause)
+}
+
+func lastDaemonLog(dir string) string {
+	f, err := os.Open(filepath.Join(dir, "daemon.log"))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	if st.Size() > 4096 {
+		if _, err := f.Seek(st.Size()-4096, io.SeekStart); err != nil {
+			return ""
+		}
+	}
+	b, err := io.ReadAll(io.LimitReader(f, 4096))
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	return cleanText(lines[len(lines)-1])
+}
+
+func noArguments(name string, args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Printf("Usage: wirectl talk %s [--state-dir DIR]\n", name)
+		return flag.ErrHelp
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("usage: %s [--state-dir DIR]", name)
+	}
+	return nil
+}
+
+func muteCommand(ctx context.Context, dir string, muted bool, args []string) error {
+	name, message := "unmute", "Microphone unmuted."
+	if muted {
+		name, message = "mute", "Microphone muted."
+	}
+	if err := noArguments(name, args); err != nil {
+		return err
+	}
+	if _, err := control.Request(ctx, dir, "POST", "/"+name); err != nil {
+		return unavailableStatus(dir, err)
+	}
+	fmt.Println(message)
+	return nil
+}
