@@ -4,6 +4,7 @@ The test-only binary is built under .cache and is never used by package.py.
 """
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import socket
@@ -92,3 +93,94 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
         if foreground.poll() is None:
             foreground.kill()
             foreground.wait()
+
+# Pairing uses real TCP while the existing audio room continues over real UDP.
+# All profiles, subprocess logs and the null-driver binary remain in .cache.
+with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
+    base = Path(directory)
+    host_state, guest_state, third_state = (base / name for name in ('host', 'guest', 'third'))
+    def call(state, *args, check=True):
+        return subprocess.run([str(exe), '--state-dir', str(state), *args], env=env,
+                              text=True, capture_output=True, timeout=25, check=check)
+    def online(state, minimum_peers=0):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            result = call(state, 'status', check=False)
+            if result.returncode == 0:
+                status = json.loads(result.stdout)
+                if len(status['peers']) >= minimum_peers and (minimum_peers == 0 or status['received_frames'] > 0):
+                    return status
+            time.sleep(.05)
+        raise AssertionError(f'{state.name} did not become online with {minimum_peers} peers')
+    # Reserve a number available to both protocols before starting the host.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+        tcp.bind(('127.0.0.1', 0))
+        port = tcp.getsockname()[1]
+        udp.bind(('127.0.0.1', port))
+    address = f'127.0.0.1:{port}'
+    call(host_state, 'init', '--listen', address)
+    processes = []
+    logs = []
+    def invite(number):
+        log_path = base / f'invite-{number}.txt'
+        log = log_path.open('w')
+        logs.append(log)
+        proc = subprocess.Popen([str(exe), '--state-dir', str(host_state), 'invite'],
+                                env=env, stdout=log, stderr=log)
+        processes.append(proc)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            match = re.search(r'Pairing code: ([0-9]{6})', log_path.read_text())
+            if match:
+                return proc, match[1]
+            assert proc.poll() is None, log_path.read_text()
+            time.sleep(.02)
+        raise AssertionError('no invitation code')
+    try:
+        call(host_state, 'daemon', 'start')
+        first, code = invite(1)
+        # Neither concurrent invitations nor overwriting an existing profile
+        # may consume the valid code or interrupt the ongoing audio session.
+        assert call(host_state, 'invite', check=False).returncode != 0
+        assert call(host_state, 'pair', address, '--code', code, check=False).returncode != 0
+        wrong = '000000' if code != '000000' else '000001'
+        assert call(guest_state, 'pair', address, '--code', wrong, check=False).returncode != 0
+        assert not (guest_state / 'config.json').exists()
+        call(guest_state, 'pair', address, '--code', code, '--listen', '127.0.0.1:0', '--headphones')
+        assert first.wait(timeout=5) == 0
+        host_config = json.loads((host_state / 'config.json').read_text())
+        guest_config = json.loads((guest_state / 'config.json').read_text())
+        assert guest_config['key'] == host_config['key']
+        assert guest_config['peers'] == [address] and guest_config['headphones'] is True
+        assert call(guest_state, 'status', check=False).returncode != 0  # pair alone opens no audio
+        assert call(third_state, 'pair', address, '--code', code, check=False).returncode != 0
+        assert not (third_state / 'config.json').exists()
+        call(guest_state, 'daemon', 'start')
+        online(host_state, 1)
+        online(guest_state, 1)
+        call(guest_state, 'daemon', 'stop')
+        # Saved room/address survive restart: no code or invitation needed.
+        call(guest_state, 'daemon', 'start')
+        online(guest_state, 1)
+        second, next_code = invite(2)
+        third_log = (base / 'third.txt').open('w')
+        logs.append(third_log)
+        third = subprocess.Popen([str(exe), '--state-dir', str(third_state), 'join',
+                                  address, '--code', next_code, '--listen', '127.0.0.1:0'],
+                                 env=env, stdout=third_log, stderr=third_log)
+        processes.append(third)
+        assert second.wait(timeout=5) == 0
+        online(third_state, 2)
+        online(host_state, 2)
+        call(third_state, 'daemon', 'stop')
+        assert third.wait(timeout=5) == 0
+        print('Numeric pairing/wrong code/single use/saved restart/three-member audio lifecycle passed')
+    finally:
+        for state in (host_state, guest_state, third_state):
+            call(state, 'daemon', 'stop', check=False)
+        for proc in processes:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+        for log in logs:
+            log.close()

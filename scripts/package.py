@@ -39,8 +39,18 @@ shutil.copyfile(malgo / 'LICENSE', licenses / 'malgo-LICENSE')
 sys_license = root / '.cache' / 'go-mod' / 'golang.org' / 'x' / 'sys@v0.31.0' / 'LICENSE'
 if sys_license.exists():
     shutil.copyfile(sys_license, licenses / 'x-sys-LICENSE')
+for module, label in [
+    ('github.com/schollz/pake/v3@v3.2.0', 'pake'),
+    ('filippo.io/edwards25519@v1.2.0', 'edwards25519'),
+    ('github.com/tscholl2/siec@v0.0.0-20240310163802-c2c6f6198406', 'siec'),
+]:
+    shutil.copyfile(root / '.cache' / 'go-mod' / module / 'LICENSE', licenses / (label + '-LICENSE'))
 goroot = Path(subprocess.check_output(['go', 'env', 'GOROOT'], env=env, text=True).strip())
-shutil.copyfile(goroot / 'LICENSE', licenses / 'Go-LICENSE')
+# Homebrew keeps the Go license above its libexec GOROOT.
+go_license = goroot / 'LICENSE'
+if not go_license.exists() and goroot.name == 'libexec':
+    go_license = goroot.parent / 'LICENSE'
+shutil.copyfile(go_license, licenses / 'Go-LICENSE')
 # miniaudio is embedded in malgo and carries its own dual public-domain/MIT notice.
 header = (malgo / 'miniaudio.h').read_text()
 (licenses / 'miniaudio-LICENSE.txt').write_text(header[header.rfind('ALTERNATIVE 1 - Public Domain'):])

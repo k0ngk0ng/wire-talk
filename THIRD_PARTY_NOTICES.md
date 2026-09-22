@@ -9,6 +9,11 @@
 - miniaudio (embedded by malgo): public domain or MIT No Attribution,
   selected by the consumer. Its license is included in release archives.
 - `golang.org/x/sys v0.31.0`: Windows security APIs, BSD 3-Clause.
+- `github.com/schollz/pake/v3 v3.2.0`: password-authenticated pairing, MIT.
+  This application selects P-256 and adds mutual key confirmation.
+- `filippo.io/edwards25519 v1.2.0`: indirect PAKE dependency, BSD 3-Clause.
+- `github.com/tscholl2/siec v0.0.0-20240310163802-c2c6f6198406`: indirect
+  PAKE dependency, MIT. Its curve is not selected by wire-talk.
 - Go standard library/runtime: Go BSD-style license.
 
 The application source is MIT licensed; see LICENSE. Module versions and

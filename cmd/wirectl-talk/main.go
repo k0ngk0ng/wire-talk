@@ -83,6 +83,8 @@ func run(ctx context.Context, args []string) error {
 		"update":  cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
 		"version": cmd("Print version", func(context.Context, []string) error { fmt.Println(version); return nil }),
 		"init":    cmd("Create room config (never overwrites)", func(_ context.Context, a []string) error { return initConfig(dir, a) }),
+		"invite":  cmd("Generate a one-use pairing code (5 minutes)", func(c context.Context, a []string) error { return inviteCommand(c, dir, a) }),
+		"pair":    cmd("Save a room using HOST:PORT --code CODE, without starting audio", func(c context.Context, a []string) error { return pairCommand(c, dir, a) }),
 		"devices": cmd("List audio input/output IDs", func(_ context.Context, a []string) error {
 			if len(a) != 0 {
 				return errors.New("usage: devices")
@@ -93,9 +95,11 @@ func run(ctx context.Context, args []string) error {
 			}
 			return json.NewEncoder(os.Stdout).Encode(ds)
 		}),
-		"join": cmd("Run microphone and speaker in foreground; Ctrl+C stops", func(c context.Context, a []string) error {
+		"join": cmd("Join HOST:PORT --code CODE, or start saved room audio; Ctrl+C stops", func(c context.Context, a []string) error {
 			if len(a) > 0 {
-				return errors.New("usage: join [--state-dir DIR]; set devices/peers in config.json")
+				if err := pairCommand(c, dir, a); err != nil {
+					return err
+				}
 			}
 			return join(c, dir)
 		}),
@@ -144,7 +148,7 @@ func initConfig(dir string, args []string) error {
 		return err
 	}
 	fmt.Println("Created", filepath.Join(dir, "config.json"))
-	fmt.Println("Share the key field privately with room members. Start with: wirectl talk join")
+	fmt.Println("Invite a member: wirectl talk invite. Start audio: wirectl talk join")
 	return nil
 }
 func join(ctx context.Context, dir string) error {
