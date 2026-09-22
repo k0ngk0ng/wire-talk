@@ -63,6 +63,7 @@ jobs:
           $updateExit = $LASTEXITCODE
           Write-Host "Update exit: $updateExit; output: $output"
           if ($updateExit -eq 0 -or $output -notmatch 'scoop update') { throw 'package marker failed' }
+          exit 0 # Do not propagate the expected updater rejection as a job failure.
   publish:
     needs: [prepare, validate]
     if: needs.prepare.outputs.changed == 'true'

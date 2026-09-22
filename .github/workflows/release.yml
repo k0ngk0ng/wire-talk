@@ -3,10 +3,16 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      verify_tag:
+        description: Existing release tag to verify through package managers
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
   build:
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +70,7 @@ jobs:
         run: gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes
   install-homebrew:
     needs: publish
+    if: always() && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +88,7 @@ jobs:
       - name: Install release through Homebrew and exercise host dispatch
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.verify_tag || github.ref_name }}
         run: |
           mkdir -p .cache/package
           gh release download "$RELEASE_TAG" --pattern talk.rb --dir .cache/package
@@ -96,6 +103,7 @@ jobs:
           grep 'brew upgrade' .cache/update-output
   install-scoop:
     needs: publish
+    if: always() && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
     env:
       SCOOP: ${{ github.workspace }}/.cache/scoop
@@ -116,7 +124,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.verify_tag || github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
           scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
@@ -132,3 +140,4 @@ jobs:
           $updateExit = $LASTEXITCODE
           Write-Host "Update exit: $updateExit; output: $output"
           if ($updateExit -eq 0 -or $output -notmatch 'scoop update') { throw 'package manager protection failed' }
+          exit 0 # The nonzero updater exit above is expected, and was asserted.
