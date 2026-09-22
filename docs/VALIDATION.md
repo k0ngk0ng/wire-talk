@@ -10,13 +10,23 @@
 不依赖独立配对服务；同一端口号分别使用 TCP 配对与 UDP 语音。房间、地址和设备
 选项保存在本地，后续启动无需数字码。旧的密钥文件配置与语音协议保持兼容。
 
-本地 `make check` 已通过竞态测试、静态检查和真实进程测试，新增覆盖：
+本地 `make check` 及[五平台 CI](https://github.com/k0ngk0ng/wire-talk/actions/runs/35689133055)
+已通过竞态测试、静态检查和真实进程测试。配对握手另外完成约 68 万次模糊测试，
+本机 0.1.3 安装包通过安装及离线更新检查。新增覆盖：
 
 - 正确/错误数字码、成功后不可重用、5 次失败关闭、到期及 Ctrl+C 取消释放监听。
 - 非法/超长/截断报文、缺失曲线坐标；篡改双方确认值或加密房间密钥均被拒绝。
 - 配对流量不包含明文房间密钥；短码仅用于 PAKE，语音仍使用随机 256 位密钥。
 - 后台语音运行时发出邀请；并发邀请拒绝，不覆盖已有房间；失败配对不创建配置。
 - 配对后保存房主地址、免码重启、第三成员配对及真实 UDP 音频帧收发（Null 驱动）。
+
+[0.1.3 发布与安装验证](https://github.com/k0ngk0ng/wire-talk/actions/runs/35689413006)
+已通过：五个平台正式构建、原生服务与安装包测试，以及四个平台 Homebrew 和
+Windows Scoop 的实际安装验证。[发行包](https://github.com/k0ngk0ng/wire-talk/releases/tag/v0.1.3)
+已发布。
+
+- [Homebrew 同步、四平台验证与发布](https://github.com/k0ngk0ng/homebrew-tap/actions/runs/35689825662)：通过。
+- [Scoop 同步、验证与发布](https://github.com/k0ngk0ng/scoop-bucket/actions/runs/35689829156)：通过。
 
 以下 0.1.2 的链接保留为原有构建与安装链路证据。
 
