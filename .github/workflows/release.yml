@@ -1,0 +1,72 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache: false
+      - name: Test and build
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p .cache/go-build .cache/go-mod .cache/tmp
+          export GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" GOTMPDIR="$PWD/.cache/tmp" TMPDIR="$PWD/.cache/tmp"
+          go test -race ./...
+          go vet ./...
+          python scripts/package.py --version "$RELEASE_TAG"
+          python scripts/test-package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.os }}
+          path: dist/wire-talk-*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: package-*
+      - name: Checksums and package definitions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/manifests.py --version "$RELEASE_TAG"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/wire-talk-*
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes
+      - name: Publish Homebrew and Scoop definitions
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo '::warning::PACKAGES_TOKEN is absent; install definitions are attached to the release but tap/bucket publishing is pending.'
+            exit 0
+          fi
+          python3 scripts/publish-manifests.py --version "$RELEASE_TAG"

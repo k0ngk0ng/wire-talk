@@ -1,0 +1,132 @@
+// Package control provides a loopback-only, capability-authenticated API.
+package control
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+type Endpoint struct {
+	Address string `json:"address"`
+	Token   string `json:"token"`
+}
+type Server struct {
+	server   *http.Server
+	listener net.Listener
+	path     string
+	endpoint Endpoint
+}
+
+func Start(dir string, status func() any, stop func(), mute func(bool)) (*Server, error) {
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "control.json")
+	// A separate OS-held lock is acquired by the caller before this function.
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	token := make([]byte, 32)
+	if _, err = rand.Read(token); err != nil {
+		l.Close()
+		return nil, err
+	}
+	s := &Server{listener: l, path: path, endpoint: Endpoint{Address: l.Addr().String(), Token: hex.EncodeToString(token)}}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(405)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status())
+	})
+	mux.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			return
+		}
+		w.WriteHeader(202)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		stop()
+	})
+	mux.HandleFunc("/mute", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			return
+		}
+		mute(true)
+		w.WriteHeader(204)
+	})
+	mux.HandleFunc("/unmute", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			return
+		}
+		mute(false)
+		w.WriteHeader(204)
+	})
+	s.server = &http.Server{ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.endpoint.Token)) != 1 {
+			w.WriteHeader(401)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})}
+	b, _ := json.Marshal(s.endpoint)
+	if err = os.WriteFile(path, b, 0600); err != nil {
+		l.Close()
+		return nil, err
+	}
+	go s.server.Serve(l)
+	return s, nil
+}
+func (s *Server) Close() { s.server.Close(); os.Remove(s.path) }
+func Request(ctx context.Context, dir, method, path string) ([]byte, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
+	if err != nil {
+		return nil, fmt.Errorf("talk is not running: %w", err)
+	}
+	var ep Endpoint
+	if err = json.Unmarshal(b, &ep); err != nil {
+		return nil, err
+	}
+	host, _, err := net.SplitHostPort(ep.Address)
+	if err != nil || host != "127.0.0.1" || len(ep.Token) != 64 {
+		return nil, errors.New("invalid local control endpoint")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, "http://"+ep.Address+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+ep.Token)
+	client := http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("talk is not running or unavailable: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("control: %s %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return body, nil
+}
