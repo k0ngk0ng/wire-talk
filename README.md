@@ -38,6 +38,21 @@ scoop install k0ngk0ng/wire-talk
 无需另装 ffmpeg、Python 或音频编解码器；Linux 需要可用的 ALSA/PulseAudio
 音频环境，macOS/Windows 需要允许麦克风权限。
 
+### Shell 补全
+
+`wirectl talk` 提供 bash 和 zsh 补全脚本。加入当前 shell 会话：
+
+```sh
+# bash
+source <(wirectl talk completion bash)
+
+# zsh（如果尚未启用补全系统）
+autoload -Uz compinit && compinit
+source <(wirectl talk completion zsh)
+```
+
+脚本同时支持直接运行的 `wirectl-talk` 命令。
+
 ## 用临时数字码加入房间
 
 房主在自己电脑上生成配对码，对方通过 **IP:端口 + 6 位数字码** 加入。不需要部署

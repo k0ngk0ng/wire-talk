@@ -79,7 +79,8 @@ func run(ctx context.Context, args []string) error {
 		return cli.Command{Summary: summary, Run: f}
 	}
 	app := cli.App{Name: "wirectl talk", Description: "direct encrypted microphone and speaker conversations", Commands: map[string]cli.Command{
-		"update": cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
+		"completion": cmd("Print bash or zsh completion script", func(_ context.Context, a []string) error { return completionCommand(a) }),
+		"update":     cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
 		"version": cmd("Print version", func(_ context.Context, a []string) error {
 			if err := noArguments("version", a); err != nil {
 				return err
