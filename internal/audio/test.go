@@ -68,6 +68,9 @@ func TestDevice(ctx context.Context, kind, id string, report func(string, Level)
 	// Free via the same allocator used by malgo DeviceID.Pointer.
 	defer freeDeviceID(deviceID)
 	cfg := malgo.DefaultDeviceConfig(dtype)
+	// BCM2835 ALSA mmap playback can stall with a stationary hardware pointer.
+	// Use the read/write path, as in malgo's capture/playback examples.
+	cfg.Alsa.NoMMap = 1
 	cfg.SampleRate = room.SampleRate
 	cfg.PeriodSizeInFrames = room.FrameSamples
 	if dtype == malgo.Capture {

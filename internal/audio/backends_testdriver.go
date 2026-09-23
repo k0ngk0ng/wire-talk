@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"fmt"
 	"github.com/gen2brain/malgo"
 	"os"
 )
@@ -16,4 +17,18 @@ func beforeDeviceClose() {
 	if os.Getenv("WIRE_TALK_TEST_HANG_CLOSE") == "1" {
 		select {}
 	}
+}
+
+// Integration tests simulate hot unplug without accessing physical devices.
+func deviceFault(kind malgo.DeviceType) error {
+	name := "WIRE_TALK_TEST_INPUT_OFFLINE"
+	if kind == malgo.Playback {
+		name = "WIRE_TALK_TEST_OUTPUT_OFFLINE"
+	}
+	if path := os.Getenv(name); path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("test device unplugged")
+		}
+	}
+	return nil
 }

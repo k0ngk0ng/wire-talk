@@ -21,3 +21,5 @@ func nativeBackends() []malgo.Backend {
 }
 
 func beforeDeviceClose() {}
+
+func deviceFault(kind malgo.DeviceType) error { return nil }

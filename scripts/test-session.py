@@ -229,3 +229,62 @@ with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
         finally:
             if process.poll() is None:process.kill();process.wait(timeout=5)
     print('Native shutdown hang: foreground/worker exit, WAV finalization and lock recovery passed')
+
+# Disconnect each native direction while real UDP peers remain connected.
+# Device availability is injected only into the test-tag build.
+with tempfile.TemporaryDirectory(dir=root / '.cache') as directory:
+    base = Path(directory)
+    a, b = base / 'a', base / 'b'
+    missing_in, missing_out = base / 'input.offline', base / 'output.offline'
+    recovery_env = dict(env, WIRE_TALK_TEST_INPUT_OFFLINE=str(missing_in),
+                        WIRE_TALK_TEST_OUTPUT_OFFLINE=str(missing_out))
+    def call_device(state, *args, check=True):
+        return subprocess.run([str(exe), '--state-dir', str(state), *args], env=env,
+                              capture_output=True, text=True, timeout=20, check=check)
+    def snapshot(state):
+        r = call_device(state, 'status', '--json', check=False)
+        return json.loads(r.stdout) if r.returncode == 0 else {}
+    def await_device(predicate):
+        end = time.monotonic() + 12
+        while time.monotonic() < end:
+            s = snapshot(a)
+            if s and predicate(s): return s
+            time.sleep(.1)
+        raise AssertionError(f'device recovery failed: {snapshot(a)}')
+    call_device(a, 'init', '--listen', '127.0.0.1:0')
+    call_device(b, 'init', '--listen', '127.0.0.1:0')
+    conf_a = json.loads((a/'config.json').read_text())
+    conf_b = json.loads((b/'config.json').read_text())
+    conf_b['key'] = conf_a['key']
+    log = (base/'a.log').open('w')
+    proc = subprocess.Popen([str(exe), '--state-dir', str(a), 'join'], env=recovery_env, stdout=log, stderr=log)
+    try:
+        first = await_device(lambda s: s['input_device']['online'] and s['output_device']['online'])
+        conf_b['peers'] = [first['listen']]
+        (b/'config.json').write_text(json.dumps(conf_b))
+        call_device(b, 'daemon', 'start')
+        connected = await_device(lambda s: len(s['peers']) == 1 and s['received_frames'] > 3)
+        node_id = connected['id']
+        call_device(a, 'mute')
+        missing_in.touch()
+        offline = await_device(lambda s: not s['input_device']['online'])
+        assert offline['output_device']['online']
+        continued = await_device(lambda s: s['received_frames'] > offline['received_frames'] + 10)
+        assert continued['id'] == node_id and len(continued['peers']) == 1
+        missing_in.unlink()
+        restored = await_device(lambda s: s['input_device']['online'])
+        assert restored['muted'] and restored['id'] == node_id
+        missing_out.touch()
+        offline = await_device(lambda s: not s['output_device']['online'])
+        assert offline['input_device']['online']
+        missing_out.unlink()
+        restored = await_device(lambda s: s['output_device']['online'])
+        assert restored['id'] == node_id and len(restored['peers']) == 1
+        call_device(a, 'daemon', 'stop')
+        proc.wait(timeout=5)
+        assert proc.returncode == 0
+    finally:
+        call_device(b, 'daemon', 'stop', check=False)
+        if proc.poll() is None: proc.kill(); proc.wait(timeout=5)
+        log.close()
+    print('Device hot unplug/reconnect: UDP peer and node identity preserved; mute retained')

@@ -94,7 +94,9 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as tmp:
         run('receiver','daemon','stop')
         with wave.open(str(final),'rb') as f:assert f.getnframes()>0,'shutdown did not finalize WAV'
         for direction in ['input','output']:
-            result=run('one','test',direction,'--seconds','1')
+            # A file-only profile intentionally disables input. Test meters in a
+            # fresh profile so they select the native null default device.
+            result=run('meter','test',direction,'--seconds','1')
             assert 'dBFS' in result.stdout and '[' in result.stdout,'no live meter'
         print('PASS: three-process file transmission, all/selected peer recording, mute independence, pause/resume/EOF, shutdown WAV, device meters')
     finally:

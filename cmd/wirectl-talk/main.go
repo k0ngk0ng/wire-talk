@@ -85,7 +85,7 @@ func run(ctx context.Context, args []string) error {
 	app := cli.App{Name: "wirectl talk", Description: "direct encrypted microphone and speaker conversations", Commands: map[string]cli.Command{
 		"record":     cmd("Record all received audio or a selected peer", func(c context.Context, a []string) error { return mediaCommand(c, dir, "record", a) }),
 		"input":      cmd("Send an audio file instead of/alongside microphone", func(c context.Context, a []string) error { return mediaCommand(c, dir, "input", a) }),
-		"test":       cmd("Test local input/output with live audio meters", func(c context.Context, a []string) error { return testAudioCommand(c, a) }),
+		"test":       cmd("Test local input/output with live audio meters", func(c context.Context, a []string) error { return testAudioCommand(c, dir, a) }),
 		"completion": cmd("Print bash or zsh completion script", func(_ context.Context, a []string) error { return completionCommand(a) }),
 		"update":     cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
 		"version": cmd("Print version", func(_ context.Context, a []string) error {
@@ -183,23 +183,15 @@ func join(ctx context.Context, dir string) (result error) {
 	defer cancel()
 	started := time.Now()
 	api, err := control.Start(dir, func() any {
-		return sessionStatus{Status: r.Status(), Input: a.Input, Output: a.Output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: m.Status()}
+		input, output := a.Devices()
+		return sessionStatus{Status: r.Status(), Input: input.Name, Output: output.Name, InputDevice: &input, OutputDevice: &output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: m.Status()}
 	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) }, m)
 	if err != nil {
 		return err
 	}
 	defer api.Close()
-	fmt.Printf("Online at %s · input: %s · output: %s\n", r.Status().Listen, a.Input, a.Output)
-	done := make(chan error, 1)
-	go func() { done <- r.Run(ctx) }()
-	select {
-	case err := <-done:
-		return err
-	case <-a.Stopped:
-		cancel()
-		<-done
-		return errors.New("audio device stopped; reconnect the device and restart talk")
-	}
+	fmt.Printf("Online at %s · audio devices reconnect automatically\n", r.Status().Listen)
+	return r.Run(ctx)
 }
 func daemon(ctx context.Context, dir string, args []string) error {
 	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") && (args[0] == "start" || args[0] == "install" || args[0] == "stop") {

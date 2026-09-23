@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k0ngk0ng/wire-talk/internal/audio"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
 	"github.com/k0ngk0ng/wire-talk/internal/media"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
@@ -21,12 +22,14 @@ import (
 type sessionStatus struct {
 	Media media.Status `json:"media"`
 	room.Status
-	Input       string    `json:"input"`
-	Output      string    `json:"output"`
-	Muted       bool      `json:"muted"`
-	OutputMuted bool      `json:"output_muted"`
-	Started     time.Time `json:"started"`
-	Version     string    `json:"version"`
+	InputDevice  *audio.DeviceState `json:"input_device,omitempty"`
+	OutputDevice *audio.DeviceState `json:"output_device,omitempty"`
+	Input        string             `json:"input"`
+	Output       string             `json:"output"`
+	Muted        bool               `json:"muted"`
+	OutputMuted  bool               `json:"output_muted"`
+	Started      time.Time          `json:"started"`
+	Version      string             `json:"version"`
 }
 
 func status(ctx context.Context, dir string, watch bool, args []string) error {
@@ -100,6 +103,16 @@ func printStatus(s sessionStatus, watch bool) {
 	output := "on"
 	if s.OutputMuted {
 		output = "muted"
+	}
+	if s.InputDevice != nil {
+		if s.InputDevice.Disabled {
+			mic = "disabled"
+		} else if !s.InputDevice.Online {
+			mic = "offline; reconnecting"
+		}
+	}
+	if s.OutputDevice != nil && !s.OutputDevice.Online {
+		output = "offline; reconnecting"
 	}
 	if watch {
 		fmt.Printf("%s  Online | mic: %s | output: %s | record: %s | file: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",

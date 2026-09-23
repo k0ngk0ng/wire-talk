@@ -1,15 +1,13 @@
-// Package audio binds one native capture/playback pair using miniaudio.
+// Package audio manages capture and playback independently of the room connection.
 package audio
 
-// #include <stdlib.h>
-import "C"
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/gen2brain/malgo"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
+	"sync"
 	"sync/atomic"
-	"unsafe"
+	"time"
 )
 
 type Device struct {
@@ -18,13 +16,22 @@ type Device struct {
 	Name    string `json:"name"`
 	Default bool   `json:"default"`
 }
+
+type DeviceState struct {
+	Name     string `json:"name"`
+	Online   bool   `json:"online"`
+	Error    string `json:"error,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+}
+
 type Audio struct {
-	context       *malgo.AllocatedContext
-	device        *malgo.Device
 	Muted         atomic.Bool
 	OutputMuted   atomic.Bool
-	Input, Output string
-	Stopped       chan struct{}
+	input, output *endpoint
+	stop          chan struct{}
+	done          chan struct{}
+	workers       sync.WaitGroup
+	once          sync.Once
 }
 
 func List() ([]Device, error) {
@@ -50,115 +57,68 @@ func List() ([]Device, error) {
 	}
 	return out, nil
 }
+
 func Open(input, output string, headphones bool, capture func([]byte), playback func([]byte)) (*Audio, error) {
 	return openWithBackends(nativeBackends(), input, output, headphones, capture, playback)
 }
+
 func openWithBackends(backends []malgo.Backend, input, output string, headphones bool, capture func([]byte), playback func([]byte)) (*Audio, error) {
-	ctx, err := malgo.InitContext(backends, malgo.ContextConfig{}, nil)
-	if err != nil {
-		return nil, err
-	}
-	a := &Audio{context: ctx, Stopped: make(chan struct{}, 1)}
-	fail := func(err error) (*Audio, error) { ctx.Uninit(); ctx.Free(); return nil, err }
-	deviceType := malgo.Duplex
-	if input == "none" {
-		deviceType = malgo.Playback
-	}
-	cfg := malgo.DefaultDeviceConfig(deviceType)
-	cfg.SampleRate = room.SampleRate
-	cfg.PeriodSizeInFrames = room.FrameSamples
-	cfg.Capture.Format = malgo.FormatS16
-	cfg.Capture.Channels = 1
-	cfg.Playback.Format = malgo.FormatS16
-	cfg.Playback.Channels = 1
-	selectDevice := func(kind malgo.DeviceType, id string) (unsafe.Pointer, string, error) {
-		devices, err := ctx.Devices(kind)
-		if err != nil {
-			return nil, "", err
-		}
-		for _, d := range devices {
-			if (id == "" && d.IsDefault != 0) || d.ID.String() == id {
-				return d.ID.Pointer(), d.Name(), nil
-			}
-		}
-		label, option := "input (microphone)", "--input"
-		if kind == malgo.Playback {
-			label, option = "output (headphones/speakers)", "--output"
-		}
-		if id == "" {
-			if len(devices) == 0 {
-				return nil, "", fmt.Errorf("no audio %s devices found; connect a device and run wirectl talk devices", label)
-			}
-			return nil, "", fmt.Errorf("no default audio %s device; select a system default or configure %s (see wirectl talk devices)", label, option)
-		}
-		return nil, "", fmt.Errorf("audio %s device %q not found; run wirectl talk devices", label, id)
-	}
-	if input == "none" {
-		a.Input = "disabled (file input only)"
-	} else {
-		cfg.Capture.DeviceID, a.Input, err = selectDevice(malgo.Capture, input)
-	}
-	if err != nil {
-		return fail(err)
-	}
-	defer C.free(cfg.Capture.DeviceID)
-	cfg.Playback.DeviceID, a.Output, err = selectDevice(malgo.Playback, output)
-	if err != nil {
-		return fail(err)
-	}
-	defer C.free(cfg.Playback.DeviceID)
-	captured := make([]byte, 0, room.FrameBytes)
-	played := make([]byte, room.FrameBytes)
-	offset := room.FrameBytes
-	guardSamples := 0
-	a.device, err = malgo.InitDevice(ctx.Context, cfg, malgo.DeviceCallbacks{
-		Data: func(out, in []byte, _ uint32) {
-			if input == "none" {
-				in = make([]byte, len(out))
-			}
-			for len(in) > 0 {
-				n := min(room.FrameBytes-len(captured), len(in))
-				captured = append(captured, in[:n]...)
-				in = in[n:]
-				if len(captured) == room.FrameBytes {
-					if a.Muted.Load() || (!headphones && guardSamples > 0) {
-						clear(captured)
-					}
-					// Always clock file input, including while microphone is muted.
-					capture(captured)
-					captured = captured[:0]
-					guardSamples = max(0, guardSamples-room.FrameSamples)
-				}
-			}
-			for len(out) > 0 {
-				if offset == room.FrameBytes {
-					playback(played)
-					if !headphones && !a.OutputMuted.Load() && audible(played) {
-						guardSamples = room.SampleRate / 5
-					}
-					offset = 0
-				}
-				n := copyPlayback(out, played[offset:], a.OutputMuted.Load())
-				offset += n
-				out = out[n:]
-			}
-		}, Stop: func() {
-			select {
-			case a.Stopped <- struct{}{}:
-			default:
-			}
-		},
-	})
-	if err != nil {
-		return fail(err)
-	}
-	if err = a.device.Start(); err != nil {
-		a.device.Uninit()
-		return fail(err)
-	}
-	return a, nil
+	return openWithFactory(nativeFactory(backends), input, output, headphones, capture, playback), nil
 }
-func (a *Audio) Close() { beforeDeviceClose(); a.device.Uninit(); a.context.Uninit(); a.context.Free() }
+
+func openWithFactory(factory deviceFactory, input, output string, headphones bool, capture func([]byte), playback func([]byte)) *Audio {
+	a := &Audio{stop: make(chan struct{}), done: make(chan struct{})}
+	a.input = newEndpoint(malgo.Capture, input)
+	a.output = newEndpoint(malgo.Playback, output)
+	for _, e := range []*endpoint{a.input, a.output} {
+		if e.snapshot().Disabled {
+			continue
+		}
+		a.workers.Add(1)
+		go func(e *endpoint) { defer a.workers.Done(); e.run(a.stop, factory) }(e)
+	}
+	// A software clock keeps received recording, file input and UDP audio alive
+	// even when a native device is absent. Native callbacks only move bounded PCM.
+	go func() {
+		defer close(a.done)
+		ticker := time.NewTicker(time.Duration(room.FrameSamples) * time.Second / room.SampleRate)
+		defer ticker.Stop()
+		in, out := make([]byte, room.FrameBytes), make([]byte, room.FrameBytes)
+		guard := 0
+		for {
+			select {
+			case <-a.stop:
+				return
+			case <-ticker.C:
+				a.input.pcm.read(in)
+				if a.Muted.Load() || !a.input.snapshot().Online || (!headphones && guard > 0) {
+					clear(in)
+				}
+				capture(in)
+				guard = max(0, guard-room.FrameSamples)
+				playback(out)
+				if a.OutputMuted.Load() {
+					clear(out)
+				}
+				if a.output.snapshot().Online {
+					if !headphones && audible(out) {
+						guard = room.SampleRate / 5
+					}
+					a.output.pcm.write(out)
+				}
+			}
+		}
+	}()
+	return a
+}
+
+func (a *Audio) Devices() (DeviceState, DeviceState) { return a.input.snapshot(), a.output.snapshot() }
+func (a *Audio) Close() {
+	a.once.Do(func() { close(a.stop) })
+	<-a.done
+	beforeDeviceClose()
+	a.workers.Wait()
+}
 
 // audible ignores very quiet output so silence does not suppress the microphone.
 // This is half-duplex speaker protection, not acoustic echo cancellation.
