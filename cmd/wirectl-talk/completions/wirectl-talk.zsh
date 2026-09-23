@@ -38,6 +38,7 @@ _wirectl_talk_completion() {
             'devices:list audio devices'
             'init:create room config'
             'input:send an audio file to peers'
+            'levels:watch microphone and speaker audio levels'
             'record:record all peers or a selected peer'
             'test:test a local audio device with a live meter'
             'invite:generate a one-use pairing code'
@@ -139,6 +140,10 @@ _wirectl_talk_completion() {
         status|watch)
             _arguments -s \
                 '--json[output JSON for scripts]' \
+                '--state-dir[configuration directory]:directory:_files -/'
+            ;;
+        levels)
+            _arguments -s \
                 '--state-dir[configuration directory]:directory:_files -/'
             ;;
         update)

@@ -86,6 +86,7 @@ func run(ctx context.Context, args []string) error {
 		"record":     cmd("Record all received audio or a selected peer", func(c context.Context, a []string) error { return mediaCommand(c, dir, "record", a) }),
 		"input":      cmd("Send an audio file instead of/alongside microphone", func(c context.Context, a []string) error { return mediaCommand(c, dir, "input", a) }),
 		"test":       cmd("Test local input/output with live audio meters", func(c context.Context, a []string) error { return testAudioCommand(c, dir, a) }),
+		"levels":     cmd("Watch live input and output audio levels", func(c context.Context, a []string) error { return levelsCommand(c, dir, a) }),
 		"completion": cmd("Print bash or zsh completion script", func(_ context.Context, a []string) error { return completionCommand(a) }),
 		"update":     cmd("Verify and install latest release", func(c context.Context, a []string) error { return updateCommand(c, dir, a) }),
 		"version": cmd("Print version", func(_ context.Context, a []string) error {

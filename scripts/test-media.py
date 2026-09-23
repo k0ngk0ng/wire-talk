@@ -71,6 +71,13 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as tmp:
         run('one','input','start',str(f1),'--loop')
         run('two','input','start',str(f2),'--loop')
         time.sleep(.3)
+        wait(lambda:status('one')['output_device']['level']['rms']>0,'live output level')
+        assert status('receiver')['output_device']['level']['rms']==0,'muted output meter was not silent'
+        meter=subprocess.Popen([str(exe),'--state-dir',str(d/'one'),'levels'],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        time.sleep(.5)
+        meter.terminate()
+        meter_out,meter_err=meter.communicate(timeout=5)
+        assert 'Input [' in meter_out and 'Output [#' in meter_out and 'dBFS' in meter_out,(meter_out,meter_err)
         all_file=d/'all.wav'
         run('receiver','record','start',str(all_file));time.sleep(1.5);run('receiver','record','stop')
         levels=(magnitude(all_file,440),magnitude(all_file,880))

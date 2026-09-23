@@ -151,6 +151,7 @@ wirectl talk init --input INPUT_ID --output OUTPUT_ID
 ```sh
 wirectl talk daemon start
 wirectl talk watch
+wirectl talk levels
 wirectl talk mute
 wirectl talk unmute
 wirectl talk daemon status
@@ -159,7 +160,10 @@ wirectl talk daemon stop
 
 `daemon start` 分离为后台进程，确认音频设备成功启动后才报告在线。可关闭终端；
 `status` 和 `daemon status` 默认显示易读的状态摘要；`watch` 先显示摘要，再每秒输出
-在线状态、静音、成员数和收发计数。Ctrl+C 只退出观察，不停止后台音频。缺少设备
+在线状态、静音、成员数和收发计数。`levels` 每 100ms 更新输入和输出的音量条、
+RMS dBFS、峰值、静音和设备离线状态；输入电平取自麦克风采集（静音时仍可观察），
+输出电平取自实际交给播放设备的声音（输出静音后为零）。Ctrl+C 只退出观察，
+不停止后台音频。缺少设备
 或尚未在线时显示启动提示及最近日志，不再只提示缺少 `control.json`。
 需要原有机器可读格式时，显式添加 `--json`（从 0.1.4 起）：
 

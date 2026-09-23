@@ -34,7 +34,7 @@ _wirectl_talk_completion() {
     esac
 
     if (( COMP_CWORD == command_index )); then
-        COMPREPLY=( $(compgen -W "completion daemon devices init input invite join mute pair record status test unmute update version watch" -- "$cur") )
+        COMPREPLY=( $(compgen -W "completion daemon devices init input invite join levels mute pair record status test unmute update version watch" -- "$cur") )
         return 0
     fi
 
@@ -117,6 +117,9 @@ _wirectl_talk_completion() {
             ;;
         status|watch)
             COMPREPLY=( $(compgen -W "--json --state-dir --help" -- "$cur") )
+            ;;
+        levels)
+            COMPREPLY=( $(compgen -W "--state-dir --help" -- "$cur") )
             ;;
         update)
             case "$prev" in

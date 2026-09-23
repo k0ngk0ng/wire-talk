@@ -43,10 +43,51 @@ type deviceHandle interface{ Close() }
 type deviceFactory func(malgo.DeviceType, string, malgo.DeviceCallbacks) (deviceHandle, string, error)
 
 type endpoint struct {
-	kind  malgo.DeviceType
-	id    string
-	state atomic.Pointer[DeviceState]
-	pcm   pcmQueue
+	kind   malgo.DeviceType
+	id     string
+	state  atomic.Pointer[DeviceState]
+	pcm    pcmQueue
+	levels levelWindow
+}
+
+// Keep short peaks visible between CLI polls without retaining old audio after
+// silence or a disconnect. Every bucket represents 100 ms of device callbacks.
+type levelWindow struct {
+	mu      sync.Mutex
+	buckets [4]levelBucket
+}
+type levelBucket struct {
+	at    int64
+	level Level
+}
+
+func (w *levelWindow) add(pcm []byte) {
+	level := Measure(pcm)
+	at := time.Now().UnixMilli() / 100
+	w.mu.Lock()
+	b := &w.buckets[at%int64(len(w.buckets))]
+	if b.at != at {
+		*b = levelBucket{at: at}
+	}
+	b.level.RMS = max(b.level.RMS, level.RMS)
+	b.level.Peak = max(b.level.Peak, level.Peak)
+	b.level.Clipped = b.level.Clipped || level.Clipped
+	w.mu.Unlock()
+}
+
+func (w *levelWindow) snapshot() Level {
+	now := time.Now().UnixMilli() / 100
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var level Level
+	for _, b := range w.buckets {
+		if b.at <= now && b.at > now-int64(len(w.buckets)) {
+			level.RMS = max(level.RMS, b.level.RMS)
+			level.Peak = max(level.Peak, b.level.Peak)
+			level.Clipped = level.Clipped || b.level.Clipped
+		}
+	}
+	return level
 }
 
 func newEndpoint(kind malgo.DeviceType, id string) *endpoint {
@@ -62,11 +103,18 @@ func newEndpoint(kind malgo.DeviceType, id string) *endpoint {
 	e.state.Store(&state)
 	return e
 }
-func (e *endpoint) snapshot() DeviceState { return *e.state.Load() }
+func (e *endpoint) snapshot() DeviceState {
+	s := *e.state.Load()
+	if s.Online {
+		s.Level = e.levels.snapshot()
+	}
+	return s
+}
 func (e *endpoint) offline(err error) {
 	s := e.snapshot()
 	s.Online = false
 	s.Error = err.Error()
+	s.Level = Level{}
 	e.state.Store(&s)
 	e.pcm.clear()
 }
@@ -84,9 +132,11 @@ func (e *endpoint) run(stop <-chan struct{}, factory deviceFactory) {
 			Data: func(out, in []byte, _ uint32) {
 				last.Store(time.Now().UnixNano())
 				if e.kind == malgo.Capture {
+					e.levels.add(in)
 					e.pcm.write(in)
 				} else {
 					e.pcm.read(out)
+					e.levels.add(out)
 				}
 			},
 			Stop: func() {

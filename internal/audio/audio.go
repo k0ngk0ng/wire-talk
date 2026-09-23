@@ -22,6 +22,7 @@ type DeviceState struct {
 	Online   bool   `json:"online"`
 	Error    string `json:"error,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
+	Level    Level  `json:"level"`
 }
 
 type Audio struct {

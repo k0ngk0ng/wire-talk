@@ -94,8 +94,15 @@ func TestMicrophoneDisconnectKeepsPlaybackAndRecovers(t *testing.T) {
 	})
 	defer a.Close()
 	eventually(t, func() bool { return captures.Load() > 2 && heard.Load() > 2 })
+	eventually(t, func() bool {
+		input, output := a.Devices()
+		return input.Level.RMS > 0 && output.Level.RMS > 0
+	})
 	available.Store(false)
 	eventually(t, func() bool { i, o := a.Devices(); return !i.Online && o.Online })
+	if input, _ := a.Devices(); input.Level.RMS != 0 {
+		t.Fatal("disconnected microphone retained a live level")
+	}
 	before := heard.Load()
 	oldCapture := captures.Load()
 	eventually(t, func() bool { return heard.Load() > before+10 })
@@ -152,6 +159,22 @@ func TestPCMQueueDropsStaleAudio(t *testing.T) {
 	}
 	if out[len(fresh)] != 0 || out[len(fresh)+1] != 0 {
 		t.Fatal("underrun not silent")
+	}
+}
+
+func TestLevelWindowTracksRecentAudioOnly(t *testing.T) {
+	var window levelWindow
+	pcm := make([]byte, room.FrameBytes)
+	for i := range pcm {
+		pcm[i] = 40
+	}
+	window.add(pcm)
+	if level := window.snapshot(); level.RMS == 0 || level.Peak == 0 {
+		t.Fatalf("captured audio not visible: %+v", level)
+	}
+	time.Sleep(450 * time.Millisecond)
+	if level := window.snapshot(); level.RMS != 0 || level.Peak != 0 {
+		t.Fatalf("stale audio remained visible: %+v", level)
 	}
 }
 

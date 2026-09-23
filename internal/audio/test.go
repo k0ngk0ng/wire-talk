@@ -14,8 +14,9 @@ import (
 )
 
 type Level struct {
-	RMS, Peak float64
-	Clipped   bool
+	RMS     float64 `json:"rms"`
+	Peak    float64 `json:"peak"`
+	Clipped bool    `json:"clipped"`
 }
 
 func Measure(pcm []byte) Level {
