@@ -34,7 +34,7 @@ _wirectl_talk_completion() {
     esac
 
     if (( COMP_CWORD == command_index )); then
-        COMPREPLY=( $(compgen -W "completion daemon devices init input invite join levels mute pair record status test unmute update version watch" -- "$cur") )
+        COMPREPLY=( $(compgen -W "completion daemon devices group init input invite join levels mute pair record status test unmute update version watch" -- "$cur") )
         return 0
     fi
 
@@ -46,6 +46,14 @@ _wirectl_talk_completion() {
 
     command="${COMP_WORDS[command_index]}"
     case "$command" in
+        group)
+            if (( COMP_CWORD == command_index + 1 )); then
+                COMPREPLY=( $(compgen -W "list status watch create join invite use mute unmute rename leave" -- "$cur") )
+                return 0
+            fi
+            case "$prev" in --code|--name|--listen) return 0 ;; esac
+            COMPREPLY=( $(compgen -W "--json --name --listen --code --state-dir --help" -- "$cur") )
+            ;;
         completion)
             if (( COMP_CWORD == command_index + 1 )); then
                 COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
@@ -64,13 +72,13 @@ _wirectl_talk_completion() {
             if [[ "$prev" == --mode ]]; then
                 COMPREPLY=( $(compgen -W "replace mix" -- "$cur") ); return 0
             fi
-            case "$prev" in --peer|--device|--seconds) return 0 ;; esac
+            case "$prev" in --peer|--device|--seconds|--group) return 0 ;; esac
             if [[ "${COMP_WORDS[command_index+1]}" == start ]] && (( COMP_CWORD == command_index + 2 )); then
                 COMPREPLY=( $(compgen -f -- "$cur") ); return 0
             fi
             case "$command" in
-                record) options="--peer --json --state-dir --help" ;;
-                input) options="--mode --loop --json --state-dir --help" ;;
+                record) options="--peer --group --json --state-dir --help" ;;
+                input) options="--mode --loop --group --json --state-dir --help" ;;
                 test) options="--device --seconds --state-dir --help" ;;
             esac
             COMPREPLY=( $(compgen -W "$options" -- "$cur") )

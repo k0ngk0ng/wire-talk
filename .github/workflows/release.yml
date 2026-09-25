@@ -35,6 +35,7 @@ jobs:
           go vet ./...
           python scripts/test-session.py
           python scripts/test-media.py
+          python scripts/test-groups.py
           python scripts/test-service.py
           python scripts/package.py --version "$RELEASE_TAG"
           python scripts/test-package.py

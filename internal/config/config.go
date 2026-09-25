@@ -11,12 +11,16 @@ import (
 )
 
 type Config struct {
-	Headphones bool     `json:"headphones"`
-	Key        string   `json:"key"`
-	Listen     string   `json:"listen"`
-	Peers      []string `json:"peers"`
-	Input      string   `json:"input,omitempty"`
-	Output     string   `json:"output,omitempty"`
+	Headphones  bool     `json:"headphones"`
+	Key         string   `json:"key"`
+	Listen      string   `json:"listen"`
+	Peers       []string `json:"peers"`
+	Input       string   `json:"input,omitempty"`
+	Output      string   `json:"output,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	ListenMuted bool     `json:"listen_muted,omitempty"`
+	ActiveGroup string   `json:"active_group,omitempty"`
+	Groups      []Group  `json:"groups,omitempty"`
 }
 
 func DefaultDir() (string, error) {
@@ -48,7 +52,7 @@ func Load(dir string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	_, err = c.KeyBytes()
+	err = c.ValidateGroups()
 	return c, err
 }
 func Save(dir string, c Config) error {

@@ -56,8 +56,8 @@ func TestCompletionScripts(t *testing.T) {
 		script string
 		want   []string
 	}{
-		{name: "bash", script: bashCompletionScript, want: []string{"_wirectl_talk_completion", "complete -o", "daemon", "levels", "--state-dir"}},
-		{name: "zsh", script: zshCompletionScript, want: []string{"_wirectl_talk_completion", "compdef", "_arguments", "daemon", "levels", "--state-dir"}},
+		{name: "bash", script: bashCompletionScript, want: []string{"_wirectl_talk_completion", "complete -o", "daemon", "group", "levels", "--state-dir"}},
+		{name: "zsh", script: zshCompletionScript, want: []string{"_wirectl_talk_completion", "compdef", "_arguments", "daemon", "group", "levels", "--state-dir"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, want := range test.want {

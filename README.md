@@ -96,7 +96,7 @@ wirectl talk daemon start
 ```
 
 以后两端直接 `join` 或 `daemon start`，不需要再次输入地址或数字码。
-已有房间配置不会被配对覆盖；加入另一个房间时用 `--state-dir DIR` 选择新配置目录。
+已有房间配置不会被配对覆盖；加入另一个房间时用 `wirectl talk group join HOST:PORT --code CODE`。
 配对后若音频启动失败，修复设备/权限后直接运行 `join`，无需重新配对。
 
 数字码随机生成，**5 分钟有效、一次使用**；5 次失败连接后关闭邀请，需重新运行
@@ -145,6 +145,48 @@ wirectl talk init --input INPUT_ID --output OUTPUT_ID
 格式为 16kHz 单声道 16-bit PCM，每帧 20ms；单个远端约 282kbit/s（另加 IP/UDP
 开销），群聊发送带宽随成员数线性增长，最多 32 个远端。不做语音转录和有损压缩。
 接收端保留有界短队列，多人同时说话时混音并限幅，丢失的帧用静音填充。
+
+## 多房间与在线成员
+
+同一后台会话可同时连接最多 16 个房间，共用一套麦克风和扬声器。
+**麦克风和文件输入只发送到当前讲话房间**；各房间默认开启收听，可单独静音。
+原有配置会作为 `default` 房间继续使用，配对和音频设备设置均保留。
+
+```sh
+wirectl talk group list                 # 房间 ID、名称、当前讲话目标和在线人数
+wirectl talk group status               # 当前房间的其他在线成员
+wirectl talk group watch                # 成员加入、离线时更新列表
+wirectl talk group status ROOM_ID       # 查看指定房间（也可用名称）
+wirectl talk group watch ROOM_ID
+wirectl talk group use ROOM_ID          # 切换麦克风发送目标
+wirectl talk group mute ROOM_ID         # 不再收听该房间，连接保持
+wirectl talk group unmute ROOM_ID       # 恢复收听
+```
+
+房间 ID 在同一房间的所有节点上一致，重启或重命名不会改变；它不是配对码，不能
+单凭 ID 加入。名称是本机标签，可用 `group rename ROOM_ID 新名称` 修改。
+列表的 `OTHERS` 和状态中的成员不包含自己；Node ID 标识当前会话中的节点，重启会改变。
+`group list/status/watch --json` 提供机器可读输出。
+
+创建或加入另一个房间，无需停止正在运行的 daemon：
+
+```sh
+wirectl talk group create 家人 --listen 0.0.0.0:51831
+wirectl talk group invite 家人
+# 另一台机器加入，使用邀请者的可达地址和临时数字码：
+wirectl talk group join HOST:51831 --code CODE --name 家人
+wirectl talk group use 家人
+```
+
+省略 `--listen` 时自动选择可用端口。额外房间需要各自可达的 UDP 音频端口，
+邀请时还使用同端口的 TCP。新房间不会自动抢占当前讲话目标；首次创建／加入
+且尚无房间时会成为当前房间，然后用 `daemon start` 启动。
+离开非当前房间用 `group leave ROOM_ID`；离开当前房间前先 `group use` 另一个房间。
+当前讲话房间、名称和各房间的收听静音状态会保存，重启后恢复。
+
+录音和文件输入默认针对当前房间。可用 `record ... --group ROOM_ID` 指定录音所属房间；
+录音不受该房间收听静音影响。切换讲话房间会停止旧房间的文件输入，避免意外续播到另一房间；
+其他房间的录音会继续。只有当前讲话房间允许开始或恢复文件输入。
 
 ## 后台在线与状态
 

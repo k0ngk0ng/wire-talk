@@ -36,6 +36,7 @@ _wirectl_talk_completion() {
             'completion:print bash or zsh completion script'
             'daemon:start, install, stop, or inspect background audio'
             'devices:list audio devices'
+            'group:manage rooms and watch members'
             'init:create room config'
             'input:send an audio file to peers'
             'levels:watch microphone and speaker audio levels'
@@ -57,6 +58,21 @@ _wirectl_talk_completion() {
 
     command="$words[$command_index]"
     case "$command" in
+        group)
+            if (( CURRENT == command_index + 1 )); then
+                candidates=(list status watch create join invite use mute unmute rename leave)
+                _describe 'room action' candidates
+                return
+            fi
+            _arguments -s \
+                '--json[output JSON]' \
+                '--name[local room name]:name:' \
+                '--listen[room listen address]:address:' \
+                '--code[temporary pairing code]:code:' \
+                '--state-dir[configuration directory]:directory:_files -/' \
+                '1:room ID, name or inviter address:' \
+                '2:new room name:'
+            ;;
         completion)
             if (( CURRENT == command_index + 1 )); then
                 candidates=(bash zsh)
@@ -83,6 +99,7 @@ _wirectl_talk_completion() {
                 '--mode[file input mode]:mode:(replace mix)' \
                 '--loop[repeat file input]' \
                 '--peer[record one peer]:ID or address:' \
+                '--group[target room]:room ID or name:' \
                 '--device[test a specific device]:device ID:' \
                 '--seconds[test duration]:seconds:' \
                 '--json[output JSON]' \

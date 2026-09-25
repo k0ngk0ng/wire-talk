@@ -49,12 +49,15 @@ func levelsCommand(ctx context.Context, dir string, args []string) error {
 		if err := json.Unmarshal(b, &s); err != nil {
 			return fmt.Errorf("invalid session status: %w", err)
 		}
-		names := s.Input + "\x00" + s.Output
+		names := s.Input + "\x00" + s.Output + "\x00" + s.GroupID
 		if names != lastNames {
 			if drew && interactive {
 				fmt.Println()
 			}
 			fmt.Printf("Input: %s · Output: %s\n", cleanText(s.Input), cleanText(s.Output))
+			if s.GroupID != "" {
+				fmt.Printf("Speaking room: %s (%s)\n", cleanText(s.GroupName), s.GroupID)
+			}
 			lastNames = names
 		}
 		line := "Input " + formatDeviceLevel(s.InputDevice, s.Muted) + " | Output " + formatDeviceLevel(s.OutputDevice, s.OutputMuted)

@@ -27,6 +27,7 @@ jobs:
           go vet ./...
           python scripts/test-session.py
           python scripts/test-media.py
+          python scripts/test-groups.py
           python scripts/test-service.py
       - name: Build and smoke test package
         shell: bash

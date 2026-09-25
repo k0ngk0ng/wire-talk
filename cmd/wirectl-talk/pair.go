@@ -32,6 +32,14 @@ func inviteCommand(ctx context.Context, dir string, args []string) error {
 	if err != nil {
 		return err
 	}
+	g, err := c.FindGroup("")
+	if err != nil {
+		return err
+	}
+	return serveInvite(ctx, config.Config{Key: g.Key, Listen: g.Listen})
+}
+
+func serveInvite(ctx context.Context, c config.Config) error {
 	_, port, err := net.SplitHostPort(c.Listen)
 	if err != nil {
 		return fmt.Errorf("invalid room listen address: %w", err)
@@ -51,7 +59,7 @@ func inviteCommand(ctx context.Context, dir string, args []string) error {
 	defer i.Close()
 	fmt.Printf("Pairing code: %s\nValid for 5 minutes, one use; keep this command open. Ctrl+C cancels.\n", i.Code)
 	fmt.Printf("Listening on %s (TCP). Give the member your reachable IP:port and code.\n", i.Address())
-	fmt.Println("Member: wirectl talk join HOST:PORT --code CODE")
+	fmt.Println("Member: wirectl talk group join HOST:PORT --code CODE")
 	if err = i.Serve(ctx); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return errors.New("invitation expired; run invite again for a new code")
@@ -102,7 +110,7 @@ func pairCommand(ctx context.Context, dir string, args []string) error {
 	defer unlock()
 	path := filepath.Join(dir, "config.json")
 	if _, err = os.Lstat(path); err == nil {
-		return errors.New("this profile already has a room; run join without arguments, or use --state-dir DIR for a different room")
+		return errors.New("this profile already has a room; run join without arguments, or use group join HOST:PORT --code CODE for another room")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

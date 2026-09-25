@@ -16,8 +16,7 @@ import (
 	"github.com/k0ngk0ng/wire-talk/internal/audio"
 	"github.com/k0ngk0ng/wire-talk/internal/config"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
-	"github.com/k0ngk0ng/wire-talk/internal/media"
-	"github.com/k0ngk0ng/wire-talk/internal/room"
+	"github.com/k0ngk0ng/wire-talk/internal/groups"
 	"github.com/k0ngk0ng/wire-talk/internal/service"
 	"github.com/k0ngk0ng/wire-talk/internal/update"
 	"github.com/k0ngk0ng/wirectl/cli"
@@ -83,6 +82,7 @@ func run(ctx context.Context, args []string) error {
 		return cli.Command{Summary: summary, Run: f}
 	}
 	app := cli.App{Name: "wirectl talk", Description: "direct encrypted microphone and speaker conversations", Commands: map[string]cli.Command{
+		"group":      cmd("Manage rooms, members, speaking target and listening", func(c context.Context, a []string) error { return groupCommand(c, dir, a) }),
 		"record":     cmd("Record all received audio or a selected peer", func(c context.Context, a []string) error { return mediaCommand(c, dir, "record", a) }),
 		"input":      cmd("Send an audio file instead of/alongside microphone", func(c context.Context, a []string) error { return mediaCommand(c, dir, "input", a) }),
 		"test":       cmd("Test local input/output with live audio meters", func(c context.Context, a []string) error { return testAudioCommand(c, dir, a) }),
@@ -163,13 +163,12 @@ func join(ctx context.Context, dir string) (result error) {
 	if err != nil {
 		return err
 	}
-	key, _ := c.KeyBytes()
-	r, err := room.Open(c.Listen, c.Peers, key)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	m, err := groups.Open(ctx, dir, c)
 	if err != nil {
 		return err
 	}
-	defer r.Close()
-	m := media.New(r)
 	defer m.Close()
 	a, err := audio.Open(c.Input, c.Output, c.Headphones, m.Capture, m.Playback)
 	if err != nil {
@@ -180,19 +179,26 @@ func join(ctx context.Context, dir string) (result error) {
 			result = err
 		}
 	}()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	started := time.Now()
 	api, err := control.Start(dir, func() any {
 		input, output := a.Devices()
-		return sessionStatus{Status: r.Status(), Input: input.Name, Output: output.Name, InputDevice: &input, OutputDevice: &output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: m.Status()}
-	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) }, m)
+		snapshot := m.Snapshot()
+		current := snapshot.Groups[0]
+		for _, g := range snapshot.Groups {
+			if g.Current {
+				current = g
+				break
+			}
+		}
+		return sessionStatus{Status: current.Status, GroupID: current.RoomID, GroupName: current.Name, Groups: snapshot.Groups, Input: input.Name, Output: output.Name, InputDevice: &input, OutputDevice: &output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: current.Media}
+	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) }, m, m)
 	if err != nil {
 		return err
 	}
 	defer api.Close()
-	fmt.Printf("Online at %s · audio devices reconnect automatically\n", r.Status().Listen)
-	return r.Run(ctx)
+	fmt.Printf("Online in %d room(s) · audio devices reconnect automatically\n", len(m.Snapshot().Groups))
+	<-ctx.Done()
+	return nil
 }
 func daemon(ctx context.Context, dir string, args []string) error {
 	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") && (args[0] == "start" || args[0] == "install" || args[0] == "stop") {

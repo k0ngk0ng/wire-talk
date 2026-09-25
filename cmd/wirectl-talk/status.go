@@ -14,13 +14,17 @@ import (
 
 	"github.com/k0ngk0ng/wire-talk/internal/audio"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
+	"github.com/k0ngk0ng/wire-talk/internal/groups"
 	"github.com/k0ngk0ng/wire-talk/internal/media"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
 	"github.com/k0ngk0ng/wire-talk/internal/service"
 )
 
 type sessionStatus struct {
-	Media media.Status `json:"media"`
+	GroupID   string          `json:"room_id"`
+	GroupName string          `json:"room_name"`
+	Groups    []groups.Status `json:"groups"`
+	Media     media.Status    `json:"media"`
 	room.Status
 	InputDevice  *audio.DeviceState `json:"input_device,omitempty"`
 	OutputDevice *audio.DeviceState `json:"output_device,omitempty"`
@@ -125,6 +129,9 @@ func printStatus(s sessionStatus, watch bool) {
 	}
 	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s (%s)\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
 		cleanText(s.Input), mic, cleanText(s.Output), output, cleanText(s.Listen), uptime, cleanText(s.Version))
+	if s.GroupID != "" {
+		fmt.Printf("Room:        %s (%s) · current speaking room\n", cleanText(s.GroupName), s.GroupID)
+	}
 	fmt.Printf("Frames:      %d sent / %d received / %d dropped / %d rejected\n", s.Sent, s.Received, s.Dropped, s.Rejected)
 	printMedia(s.Media)
 	fmt.Printf("Node ID:     %s (current session)\n", s.ID)

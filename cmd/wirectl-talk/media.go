@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/k0ngk0ng/wire-talk/internal/groups"
+	"net/url"
 	"path/filepath"
 
 	"github.com/k0ngk0ng/wire-talk/internal/control"
@@ -12,7 +14,19 @@ import (
 )
 
 func mediaCommand(ctx context.Context, dir, kind string, args []string) error {
+	group := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--group" {
+			if i+1 >= len(args) {
+				return fmt.Errorf("--group requires a room ID or name")
+			}
+			group = args[i+1]
+			args = append(args[:i], args[i+2:]...)
+			i--
+		}
+	}
 	usage := func() {
+		fmt.Println("Optional: --group ROOM_ID|NAME (default: current speaking room)")
 		if kind == "record" {
 			fmt.Println("Usage: wirectl talk record start FILE.wav [--peer ID|HOST:PORT] | stop | status [--json]")
 			fmt.Println("Records received audio before output mute; default: all peers, no local microphone. Existing files are never overwritten.")
@@ -39,10 +53,18 @@ func mediaCommand(ctx context.Context, dir, kind string, args []string) error {
 			return err
 		}
 		var snapshot struct {
-			Media *media.Status `json:"media"`
+			Media  *media.Status   `json:"media"`
+			Groups []groups.Status `json:"groups"`
 		}
 		if err = json.Unmarshal(b, &snapshot); err != nil {
 			return err
+		}
+		if group != "" {
+			g, err := chooseGroup(groups.Snapshot{Groups: snapshot.Groups}, group)
+			if err != nil {
+				return err
+			}
+			snapshot.Media = &g.Media
 		}
 		if snapshot.Media == nil {
 			return fmt.Errorf("restart the daemon with the updated version to use media controls")
@@ -88,7 +110,7 @@ func mediaCommand(ctx context.Context, dir, kind string, args []string) error {
 		}
 	}
 	data, _ := json.Marshal(c)
-	b, err := control.RequestBody(ctx, dir, "POST", "/media", data)
+	b, err := control.RequestBody(ctx, dir, "POST", "/media?group="+url.QueryEscape(group), data)
 	if err != nil {
 		return fmt.Errorf("%s: %w", kind, err)
 	}
