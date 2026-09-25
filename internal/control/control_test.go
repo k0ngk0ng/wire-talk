@@ -76,3 +76,21 @@ func TestControlRequiresCapabilityAndSeparatesWatchFromStop(t *testing.T) {
 	}
 	<-stopped
 }
+
+func TestStopResponseCompletesBeforeImmediateShutdown(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		dir := t.TempDir()
+		server := make(chan *Server, 1)
+		closed := make(chan struct{})
+		s, err := Start(dir, func() any { return nil }, func() { (<-server).Close(); close(closed) }, func(bool) {}, func(bool) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		server <- s
+		_, err = Request(context.Background(), dir, "POST", "/stop")
+		<-closed
+		if err != nil {
+			t.Fatalf("successful shutdown returned %v", err)
+		}
+	}
+}

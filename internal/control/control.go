@@ -61,6 +61,10 @@ func Start(dir string, status func() any, stop func(), mute func(bool), muteOutp
 			w.WriteHeader(405)
 			return
 		}
+		// Complete the empty response before teardown closes this connection.
+		// Without a length, Flush selects chunked encoding and Close can omit
+		// its final chunk, making a successful stop look like unexpected EOF.
+		w.Header().Set("Content-Length", "0")
 		w.WriteHeader(202)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
