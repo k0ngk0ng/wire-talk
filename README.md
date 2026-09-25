@@ -166,7 +166,7 @@ wirectl talk group unmute ROOM_ID       # 恢复收听
 
 房间 ID 在同一房间的所有节点上一致，重启或重命名不会改变；它不是配对码，不能
 单凭 ID 加入。名称是本机标签，可用 `group rename ROOM_ID 新名称` 修改。
-`group levels [ROOM_ID|NAME]` 每 100ms 显示自己和各成员的音量条、dBFS、峰值。
+`group levels [ROOM_ID|NAME]` 每 100ms 显示自己和各成员的话筒音量条、dBFS。
 远端电平来自本机收到的音频，在混音和本地收听静音之前测量；并非远端扬声器电平。
 自己显示送入该房间的音频（含文件输入），停止收到音频后电平最多 400ms 归零。
 支持 `--json`，退出视图不会停止对讲。

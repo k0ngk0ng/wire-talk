@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/k0ngk0ng/wire-talk/internal/audio"
 	"github.com/k0ngk0ng/wire-talk/internal/groups"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
 )
@@ -60,21 +61,28 @@ func groupLevels(ctx context.Context, dir string, args []string) error {
 	}
 }
 func memberLevel(l room.Level) string {
-	return formatDeviceLevel(&audio.DeviceState{Online: true, Level: audio.Level{RMS: l.RMS, Peak: l.Peak, Clipped: l.Clipped}}, false)
+	const width = 20
+	db, n := "-inf dBFS", 0
+	if l.RMS > 0 {
+		value := 20 * math.Log10(l.RMS)
+		db = fmt.Sprintf("%5.1f dBFS", value)
+		n = max(0, min(width, int(math.Round((value+60)/60*width))))
+	}
+	return fmt.Sprintf("[%s%s] %s", strings.Repeat("#", n), strings.Repeat("-", width-n), db)
 }
 func formatGroupLevels(g groups.Status) string {
 	state := "online"
 	if !g.Online {
 		state = "offline"
 	}
-	text := fmt.Sprintf("Room %s (%s) · %s\nMember audio levels · 100ms · Ctrl+C exits; talk stays online.\nSelf: room input. Others: received audio, before mixing / speaker mute.\n\n", cleanText(g.Name), g.RoomID, state)
+	text := fmt.Sprintf("Room %s (%s) · %s\nMicrophone levels · Ctrl+C exits\n\n", cleanText(g.Name), g.RoomID, state)
 	self := "Self (sending)"
 	if !g.Current {
 		self = "Self (not speaking here)"
 	}
-	text += fmt.Sprintf("%s\n  %s\n", self, memberLevel(g.SelfLevel))
+	text += fmt.Sprintf("%-28s %s\n", self, memberLevel(g.SelfLevel))
 	for _, p := range g.Peers {
-		text += fmt.Sprintf("%s · %s\n  %s\n", cleanText(p.Address), cleanText(p.ID), memberLevel(p.Level))
+		text += fmt.Sprintf("%-28s %s\n", cleanText(p.Address), memberLevel(p.Level))
 	}
 	if len(g.Peers) == 0 {
 		text += "No other members online.\n"
