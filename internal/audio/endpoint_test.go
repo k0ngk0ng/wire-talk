@@ -73,7 +73,7 @@ func TestMicrophoneDisconnectKeepsPlaybackAndRecovers(t *testing.T) {
 						cb.Data(nil, p, room.FrameSamples)
 					} else {
 						cb.Data(p, nil, room.FrameSamples)
-						if audible(p) {
+						if Measure(p).RMS > 0 {
 							heard.Add(1)
 						}
 					}
@@ -83,7 +83,7 @@ func TestMicrophoneDisconnectKeepsPlaybackAndRecovers(t *testing.T) {
 		return d, "test device", nil
 	}
 	a := openWithFactory(factory, "mic", "speaker", true, func(p []byte) {
-		if audible(p) {
+		if Measure(p).RMS > 0 {
 			captures.Add(1)
 		}
 	}, func(p []byte) {
@@ -129,7 +129,7 @@ func TestNoDevicesStillClocksMediaAndCanStop(t *testing.T) {
 		return nil, "", errors.New("absent")
 	}, "missing", "missing", true, func(p []byte) {
 		capture.Add(1)
-		if audible(p) {
+		if Measure(p).RMS > 0 {
 			t.Error("offline capture not silent")
 		}
 	}, func(p []byte) { clear(p); playback.Add(1) })
@@ -202,4 +202,58 @@ func TestStuckCaptureTeardownDoesNotStopOutput(t *testing.T) {
 	if !o.Online {
 		t.Fatal("stuck microphone teardown took output offline")
 	}
+}
+
+func TestReceiverNoiseDoesNotSuppressMicrophone(t *testing.T) {
+	var received atomic.Int32
+	var playbackSample atomic.Int32
+	playbackSample.Store(180)
+	factory := func(kind malgo.DeviceType, _ string, cb malgo.DeviceCallbacks) (deviceHandle, string, error) {
+		d := &fakeAudioDevice{stop: make(chan struct{}), done: make(chan struct{})}
+		go func() {
+			defer close(d.done)
+			ticker := time.NewTicker(20 * time.Millisecond)
+			defer ticker.Stop()
+			pcm := make([]byte, room.FrameBytes)
+			for {
+				select {
+				case <-d.stop:
+					return
+				case <-ticker.C:
+					if kind == malgo.Capture {
+						for i := 0; i < len(pcm); i += 2 {
+							pcm[i] = 232
+							pcm[i+1] = 3
+						}
+						cb.Data(nil, pcm, room.FrameSamples)
+					} else {
+						cb.Data(pcm, nil, room.FrameSamples)
+					}
+				}
+			}
+		}()
+		return d, "test device", nil
+	}
+	a := openWithFactory(factory, "mic", "speaker", false, func(p []byte) {
+		if Measure(p).RMS > 0 {
+			received.Add(1)
+		}
+	}, func(p []byte) {
+		sample := uint16(playbackSample.Load())
+		for i := 0; i < len(p); i += 2 {
+			p[i] = byte(sample)
+			p[i+1] = byte(sample >> 8)
+		}
+	})
+	defer a.Close()
+	eventually(t, func() bool { return received.Load() > 10 })
+	playbackSample.Store(1000)
+	time.Sleep(150 * time.Millisecond)
+	before := received.Load()
+	time.Sleep(120 * time.Millisecond)
+	if received.Load() != before {
+		t.Fatal("loud speaker playback no longer protects microphone")
+	}
+	playbackSample.Store(180)
+	eventually(t, func() bool { return received.Load() > before+5 })
 }

@@ -121,15 +121,17 @@ func (a *Audio) Close() {
 	a.workers.Wait()
 }
 
-// audible ignores very quiet output so silence does not suppress the microphone.
-// This is half-duplex speaker protection, not acoustic echo cancellation.
+// audible ignores background noise below -40 dBFS RMS. The previous -50 dBFS
+// threshold let a wireless receiver's idle noise continuously suppress the
+// other participant's microphone. This is speaker protection, not echo cancellation.
 func audible(pcm []byte) bool {
+	const minimumRMS = 328 // 32768 * 10^(-40/20), rounded up.
 	var energy int64
 	for i := 0; i+1 < len(pcm); i += 2 {
 		v := int64(int16(binary.LittleEndian.Uint16(pcm[i:])))
 		energy += v * v
 	}
-	return len(pcm) > 0 && energy > int64(len(pcm)/2)*100*100
+	return len(pcm) > 0 && energy > int64(len(pcm)/2)*minimumRMS*minimumRMS
 }
 
 // copyPlayback consumes the same audio while muted, preventing queued speech
