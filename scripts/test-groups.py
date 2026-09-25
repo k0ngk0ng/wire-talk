@@ -65,6 +65,15 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as directory:
         assert invitation.wait(timeout=5)==0
         call('b','group','use','beta')
         wait(lambda:len(group('hub','alpha')['peers'])==1 and len(group('hub','beta')['peers'])==1,'members missing from simultaneous rooms')
+        peer=group('hub','alpha')['peers'][0]
+        call('hub','volume','output','+6')
+        call('hub','volume','peer',peer['id'],'+9','--group','alpha')
+        settings=json.loads(call('hub','volume','--group','alpha','--json').stdout)
+        assert settings['output_gain_db']==6 and list(settings['peer_gains'].values())==[9],settings
+        assert call('hub','volume','output','NaN',check=False).returncode!=0
+        assert call('hub','volume','output','25',check=False).returncode!=0
+        call('hub','volume','output','-3')
+        assert groups('hub')['output_gain_db']==-3
         f=base/'tone.wav';tone(f,440)
         call('hub','input','start',str(f),'--loop')
         time.sleep(.3)
@@ -95,6 +104,7 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as directory:
         assert all(not g['online'] for g in offline['groups'])
         call('hub','daemon','start')
         assert groups('hub')['current']==beta and not group('hub','alpha')['listening']
+        assert groups('hub')['output_gain_db']==-3 and list(group('hub','alpha')['peer_gains'].values())==[9], 'gain did not survive restart'
         saved=json.loads((base/'hub'/'config.json').read_text())
         assert saved['key']==old['key'] and saved['input']=='none','legacy credentials/devices changed'
         public=call('hub','group','list','--json').stdout

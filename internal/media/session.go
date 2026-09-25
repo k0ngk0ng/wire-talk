@@ -87,10 +87,12 @@ func (s *Session) StopRecording() error {
 	}
 	return s.record.stop()
 }
-func (s *Session) Playback(out []byte) {
+func (s *Session) Playback(out []byte) { s.PlaybackMonitor(out, nil, nil) }
+
+func (s *Session) PlaybackMonitor(out []byte, monitor []float64, gains map[string]float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.room.PlaybackSelected(out, s.selectedPCM[:], s.selected)
+	s.room.PlaybackSelectedMonitor(out, s.selectedPCM[:], s.selected, monitor, gains)
 	if s.record != nil && !s.closed {
 		pcm := out
 		if s.record.status.Peer != "all" {

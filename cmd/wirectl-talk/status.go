@@ -21,10 +21,11 @@ import (
 )
 
 type sessionStatus struct {
-	GroupID   string          `json:"room_id"`
-	GroupName string          `json:"room_name"`
-	Groups    []groups.Status `json:"groups"`
-	Media     media.Status    `json:"media"`
+	OutputGainDB float64         `json:"output_gain_db"`
+	GroupID      string          `json:"room_id"`
+	GroupName    string          `json:"room_name"`
+	Groups       []groups.Status `json:"groups"`
+	Media        media.Status    `json:"media"`
 	room.Status
 	InputDevice  *audio.DeviceState `json:"input_device,omitempty"`
 	OutputDevice *audio.DeviceState `json:"output_device,omitempty"`
@@ -129,6 +130,7 @@ func printStatus(s sessionStatus, watch bool) {
 	}
 	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s (%s)\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
 		cleanText(s.Input), mic, cleanText(s.Output), output, cleanText(s.Listen), uptime, cleanText(s.Version))
+	fmt.Printf("Output gain: %+.1f dB\n", s.OutputGainDB)
 	if s.GroupID != "" {
 		fmt.Printf("Room:        %s (%s) · current speaking room\n", cleanText(s.GroupName), s.GroupID)
 	}

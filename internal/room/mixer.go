@@ -49,6 +49,12 @@ func (m *Mixer) Read(out []byte) { m.ReadSelected(out, nil, [16]byte{}) }
 
 // ReadSelected exposes one speaker at exactly the same playback clock as the mix.
 func (m *Mixer) ReadSelected(out, selected []byte, peer [16]byte) {
+	m.ReadSelectedMonitor(out, selected, peer, nil, nil)
+}
+
+// ReadSelectedMonitor also builds a floating-point playback mix; recording stays raw.
+func (m *Mixer) ReadSelectedMonitor(out, selected []byte, peer [16]byte, monitor []float64, gains map[[16]byte]float64) {
+	clear(monitor)
 	clear(selected)
 	clear(out)
 	if len(out) != FrameBytes {
@@ -78,7 +84,15 @@ func (m *Mixer) ReadSelected(out, selected []byte, peer [16]byte) {
 		}
 		s.frames = s.frames[1:]
 		for i := range sums {
-			sums[i] += int32(int16(binary.LittleEndian.Uint16(frame[i*2:])))
+			v := int32(int16(binary.LittleEndian.Uint16(frame[i*2:])))
+			sums[i] += v
+			if len(monitor) == FrameSamples {
+				factor, ok := gains[id]
+				if !ok {
+					factor = 1
+				}
+				monitor[i] += float64(v) * factor
+			}
 		}
 	}
 	for i, v := range sums {

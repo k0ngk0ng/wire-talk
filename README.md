@@ -194,6 +194,28 @@ wirectl talk group use 家人
 录音不受该房间收听静音影响。切换讲话房间会停止旧房间的文件输入，避免意外续播到另一房间；
 其他房间的录音会继续。只有当前讲话房间允许开始或恢复文件输入。
 
+## 接收声音放大
+
+系统音量最大仍听不清时，可以增加本机软件播放增益：
+
+```sh
+wirectl talk volume                         # 查看增益
+wirectl talk volume output +6               # 所有收到的声音放大约 2 倍
+wirectl talk volume peer 100.113.200.13:51830 +6  # 只放大此成员
+wirectl talk volume peer NODE_ID +6 --group default
+wirectl talk volume output 0                # 恢复整体默认增益
+wirectl talk volume peer 100.113.200.13:51830 0   # 清除此成员的增益
+```
+
+范围为 −60 到 +24 dB，支持小数。整体和成员增益叠加，在线立即生效并保存，
+也可在后台停止时设置。成员设置按房间和 IP:端口保存；同地址重启仍生效，
+地址变化需重新设置。Node ID 只用于查找当前在线成员。
+`volume --json [--group ROOM]` 输出 JSON，普通输出为可读文本。
+
+仅影响自己听到的声音，不改变发送音频、录音或 `group levels` 的原始接收电平。
+峰值限幅器在转换为播放 PCM 前压低过大的混音，避免样本溢出；声音很大时会压缩动态。
+增益也会放大底噪，建议从 +6 dB 开始。输出静音和房间收听静音仍然生效。
+
 ## 后台在线与状态
 
 ```sh

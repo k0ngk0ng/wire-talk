@@ -130,9 +130,9 @@ func readGroups(ctx context.Context, dir string) (groups.Snapshot, error) {
 	if err != nil {
 		return groups.Snapshot{}, err
 	}
-	s := groups.Snapshot{Current: c.CurrentID(), Groups: []groups.Status{}}
+	s := groups.Snapshot{OutputGainDB: c.OutputGainDB, Current: c.CurrentID(), Groups: []groups.Status{}}
 	for _, g := range c.RoomConfigs() {
-		s.Groups = append(s.Groups, groups.Status{RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Status: room.Status{Listen: g.Listen, Peers: []room.Peer{}}})
+		s.Groups = append(s.Groups, groups.Status{PeerGains: g.PeerGains, RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Status: room.Status{Listen: g.Listen, Peers: []room.Peer{}}})
 	}
 	return s, nil
 }

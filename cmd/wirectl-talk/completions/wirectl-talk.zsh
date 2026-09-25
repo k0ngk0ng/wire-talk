@@ -51,6 +51,7 @@ _wirectl_talk_completion() {
             'update:install the latest release'
             'version:print version'
             'watch:watch session status'
+            'volume:adjust output or member gain'
         )
         _describe 'talk command' candidates
         return
@@ -158,6 +159,14 @@ _wirectl_talk_completion() {
             _arguments -s \
                 '--json[output JSON for scripts]' \
                 '--state-dir[configuration directory]:directory:_files -/'
+            ;;
+        volume)
+            _arguments -s \
+                '--json[output JSON]' \
+                '--group[target room]:room:' \
+                '--state-dir[configuration directory]:directory:_files -/' \
+                '1:target:(output peer)' \
+                '*:gain or member address:'
             ;;
         levels)
             _arguments -s \

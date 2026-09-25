@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/k0ngk0ng/wire-talk/internal/volume"
 	"net"
 	"net/netip"
 	"sort"
@@ -244,4 +245,18 @@ func (r *Room) sendLoop(ctx context.Context) {
 			send(voice, frame)
 		}
 	}
+}
+
+// PlaybackSelectedMonitor preserves received recording and meters before gain.
+func (r *Room) PlaybackSelectedMonitor(out, selected []byte, peer [16]byte, monitor []float64, gains map[string]float64) {
+	factors := make(map[[16]byte]float64, len(gains))
+	r.mu.Lock()
+	for id, p := range r.peers {
+		address, _ := volume.Address(p.Address)
+		if db, ok := gains[address]; ok {
+			factors[id] = volume.Factor(db)
+		}
+	}
+	r.mu.Unlock()
+	r.mixer.ReadSelectedMonitor(out, selected, peer, monitor, factors)
 }

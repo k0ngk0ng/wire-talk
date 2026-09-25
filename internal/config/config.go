@@ -11,16 +11,18 @@ import (
 )
 
 type Config struct {
-	Headphones  bool     `json:"headphones"`
-	Key         string   `json:"key"`
-	Listen      string   `json:"listen"`
-	Peers       []string `json:"peers"`
-	Input       string   `json:"input,omitempty"`
-	Output      string   `json:"output,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	ListenMuted bool     `json:"listen_muted,omitempty"`
-	ActiveGroup string   `json:"active_group,omitempty"`
-	Groups      []Group  `json:"groups,omitempty"`
+	OutputGainDB float64            `json:"output_gain_db,omitempty"`
+	PeerGains    map[string]float64 `json:"peer_gains,omitempty"`
+	Headphones   bool               `json:"headphones"`
+	Key          string             `json:"key"`
+	Listen       string             `json:"listen"`
+	Peers        []string           `json:"peers"`
+	Input        string             `json:"input,omitempty"`
+	Output       string             `json:"output,omitempty"`
+	Name         string             `json:"name,omitempty"`
+	ListenMuted  bool               `json:"listen_muted,omitempty"`
+	ActiveGroup  string             `json:"active_group,omitempty"`
+	Groups       []Group            `json:"groups,omitempty"`
 }
 
 func DefaultDir() (string, error) {

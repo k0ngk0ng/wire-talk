@@ -4,7 +4,6 @@ package groups
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,21 +14,24 @@ import (
 	"github.com/k0ngk0ng/wire-talk/internal/config"
 	"github.com/k0ngk0ng/wire-talk/internal/media"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
+	"github.com/k0ngk0ng/wire-talk/internal/volume"
 )
 
 type Status struct {
-	RoomID    string `json:"room_id"`
-	Name      string `json:"name"`
-	Current   bool   `json:"current"`
-	Listening bool   `json:"listening"`
-	Online    bool   `json:"online"`
-	Error     string `json:"error,omitempty"`
+	PeerGains map[string]float64 `json:"peer_gains,omitempty"`
+	RoomID    string             `json:"room_id"`
+	Name      string             `json:"name"`
+	Current   bool               `json:"current"`
+	Listening bool               `json:"listening"`
+	Online    bool               `json:"online"`
+	Error     string             `json:"error,omitempty"`
 	room.Status
 	Media media.Status `json:"media"`
 }
 type Snapshot struct {
-	Current string   `json:"current"`
-	Groups  []Status `json:"groups"`
+	OutputGainDB float64  `json:"output_gain_db"`
+	Current      string   `json:"current"`
+	Groups       []Status `json:"groups"`
 }
 type liveRoom struct {
 	r      *room.Room
@@ -64,12 +66,13 @@ func openRoom(ctx context.Context, g config.Group) (*liveRoom, error) {
 func (l *liveRoom) close() { l.cancel(); l.r.Close(); <-l.done; l.m.Close() }
 
 type Manager struct {
-	mu     sync.Mutex
-	ctx    context.Context
-	dir    string
-	cfg    config.Config
-	rooms  map[string]*liveRoom
-	closed bool
+	mu      sync.Mutex
+	ctx     context.Context
+	dir     string
+	cfg     config.Config
+	rooms   map[string]*liveRoom
+	closed  bool
+	limiter volume.Limiter
 }
 
 func Open(ctx context.Context, dir string, c config.Config) (*Manager, error) {
@@ -96,10 +99,10 @@ func (m *Manager) Close() {
 	}
 }
 func (m *Manager) snapshot() Snapshot {
-	s := Snapshot{Current: m.cfg.CurrentID(), Groups: []Status{}}
+	s := Snapshot{OutputGainDB: m.cfg.OutputGainDB, Current: m.cfg.CurrentID(), Groups: []Status{}}
 	for _, g := range m.cfg.RoomConfigs() {
 		l := m.rooms[g.ID()]
-		status := Status{RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Online: l.online.Load(), Status: l.r.Status(), Media: l.m.Status()}
+		status := Status{PeerGains: g.PeerGains, RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Online: l.online.Load(), Status: l.r.Status(), Media: l.m.Status()}
 		if err := l.err.Load(); err != nil {
 			status.Error = err.(string)
 		}
@@ -125,28 +128,45 @@ func (m *Manager) Playback(out []byte) {
 	if m.closed {
 		return
 	}
-	sums := [room.FrameSamples]int32{}
+	sums := [room.FrameSamples]float64{}
+	monitor := [room.FrameSamples]float64{}
 	frame := [room.FrameBytes]byte{}
 	for _, g := range m.cfg.RoomConfigs() {
 		l := m.rooms[g.ID()]
-		l.m.Playback(frame[:]) // Drain even muted rooms; recordings remain independent.
+		l.m.PlaybackMonitor(frame[:], monitor[:], g.PeerGains) // Drain even muted rooms; recordings remain independent.
 		if g.Muted || !l.online.Load() {
 			continue
 		}
 		for i := range sums {
-			sums[i] += int32(int16(binary.LittleEndian.Uint16(frame[i*2:])))
+			sums[i] += monitor[i]
 		}
 	}
-	for i, v := range sums {
-		v = max(-32768, min(32767, v))
-		binary.LittleEndian.PutUint16(out[i*2:], uint16(int16(v)))
-	}
+	m.limiter.Render(out, sums[:], volume.Factor(m.cfg.OutputGainDB))
 }
 func (m *Manager) Apply(cmd config.GroupChange) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return fmt.Errorf("session stopped")
+	}
+	if cmd.Action == "peer-gain" {
+		g, err := m.cfg.FindGroup(cmd.Room)
+		if err != nil {
+			return err
+		}
+		if _, err := volume.Address(cmd.Peer); err != nil {
+			found := false
+			for _, p := range m.rooms[g.ID()].r.Status().Peers {
+				if p.ID == cmd.Peer {
+					cmd.Peer = p.Address
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("member not found; use an IP:port or full node ID from group status")
+			}
+		}
 	}
 	next, err := m.cfg.Changed(cmd)
 	if err != nil {

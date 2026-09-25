@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"github.com/k0ngk0ng/wire-talk/internal/volume"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -102,6 +104,20 @@ func TestIndependentRoutingAndListening(t *testing.T) {
 	}
 	feed()
 	await(t, func() bool { m.Playback(out); return int16(binary.LittleEndian.Uint16(out)) == 3000 })
+	db := 6.0
+	if err = m.Apply(config.GroupChange{Action: "peer-gain", Room: "alpha", Peer: peers[0].Status().ID, GainDB: &db}); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Apply(config.GroupChange{Action: "output-gain", GainDB: &db}); err != nil {
+		t.Fatal(err)
+	}
+	feed()
+	want := int16(math.Round((1000*volume.Factor(6) + 2000) * volume.Factor(6)))
+	await(t, func() bool { m.Playback(out); return int16(binary.LittleEndian.Uint16(out)) == want })
+	gainCfg, err := config.Load(dir)
+	if err != nil || gainCfg.OutputGainDB != 6 || len(gainCfg.PeerGains) != 1 {
+		t.Fatal("live gains did not persist", err)
+	}
 	b, _ := json.Marshal(m.Snapshot())
 	var public map[string]any
 	if err = json.Unmarshal(b, &public); err != nil {
