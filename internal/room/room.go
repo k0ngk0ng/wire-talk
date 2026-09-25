@@ -18,15 +18,18 @@ type Peer struct {
 	ID       string    `json:"id"`
 	Address  string    `json:"address"`
 	LastSeen time.Time `json:"last_seen"`
+	Level    Level     `json:"level"`
+	levels   levelWindow
 }
 type Status struct {
-	Listen   string `json:"listen"`
-	ID       string `json:"id"`
-	Peers    []Peer `json:"peers"`
-	Sent     uint64 `json:"sent_frames"`
-	Received uint64 `json:"received_frames"`
-	Rejected uint64 `json:"rejected_packets"`
-	Dropped  uint64 `json:"dropped_frames"`
+	SelfLevel Level  `json:"self_level"`
+	Listen    string `json:"listen"`
+	ID        string `json:"id"`
+	Peers     []Peer `json:"peers"`
+	Sent      uint64 `json:"sent_frames"`
+	Received  uint64 `json:"received_frames"`
+	Rejected  uint64 `json:"rejected_packets"`
+	Dropped   uint64 `json:"dropped_frames"`
 }
 type Room struct {
 	conn                              *net.UDPConn
@@ -37,6 +40,7 @@ type Room struct {
 	peers                             map[[16]byte]Peer
 	seeds                             []netip.AddrPort
 	audio                             chan []byte
+	selfLevels                        levelWindow
 	sent, received, rejected, dropped atomic.Uint64
 }
 
@@ -84,6 +88,9 @@ func (r *Room) Capture(frame []byte) {
 	p := append([]byte(nil), frame...)
 	select {
 	case r.audio <- p:
+		r.mu.Lock()
+		r.selfLevels.add(frame, time.Now())
+		r.mu.Unlock()
 	default:
 		r.dropped.Add(1)
 	}
@@ -95,9 +102,10 @@ func (r *Room) PlaybackSelected(out, selected []byte, peer [16]byte) {
 func (r *Room) Status() Status {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	s := Status{Listen: r.conn.LocalAddr().String(), ID: hex.EncodeToString(r.id[:]), Peers: []Peer{}, Sent: r.sent.Load(), Received: r.received.Load(), Rejected: r.rejected.Load(), Dropped: r.dropped.Load()}
+	s := Status{SelfLevel: r.selfLevels.snapshot(time.Now()), Listen: r.conn.LocalAddr().String(), ID: hex.EncodeToString(r.id[:]), Peers: []Peer{}, Sent: r.sent.Load(), Received: r.received.Load(), Rejected: r.rejected.Load(), Dropped: r.dropped.Load()}
 	for _, p := range r.peers {
 		if time.Since(p.LastSeen) < 6*time.Second {
+			p.Level = p.levels.snapshot(time.Now())
 			s.Peers = append(s.Peers, p)
 		}
 	}
@@ -148,7 +156,12 @@ func (r *Room) Run(ctx context.Context) error {
 			r.mu.Unlock()
 			continue
 		}
-		r.peers[p.Sender] = Peer{ID: hex.EncodeToString(p.Sender[:]), Address: from.String(), LastSeen: now}
+		peer := r.peers[p.Sender]
+		peer.ID, peer.Address, peer.LastSeen = hex.EncodeToString(p.Sender[:]), from.String(), now
+		if p.Kind == voice {
+			peer.levels.add(p.Body, now)
+		}
+		r.peers[p.Sender] = peer
 		r.mu.Unlock()
 		if p.Kind == voice {
 			r.received.Add(1)

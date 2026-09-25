@@ -60,7 +60,7 @@ _wirectl_talk_completion() {
     case "$command" in
         group)
             if (( CURRENT == command_index + 1 )); then
-                candidates=(list status watch create join invite use mute unmute rename leave)
+                candidates=(list status watch levels create join invite use mute unmute rename leave)
                 _describe 'room action' candidates
                 return
             fi

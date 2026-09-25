@@ -48,7 +48,7 @@ _wirectl_talk_completion() {
     case "$command" in
         group)
             if (( COMP_CWORD == command_index + 1 )); then
-                COMPREPLY=( $(compgen -W "list status watch create join invite use mute unmute rename leave" -- "$cur") )
+                COMPREPLY=( $(compgen -W "list status watch levels create join invite use mute unmute rename leave" -- "$cur") )
                 return 0
             fi
             case "$prev" in --code|--name|--listen) return 0 ;; esac

@@ -24,6 +24,7 @@ func groupHelp() {
 	fmt.Println(`Usage: wirectl talk group COMMAND
   list [--json]                     List saved rooms and online counts
   status [ROOM_ID|NAME] [--json]     Show a room and its online members
+  levels [ROOM_ID|NAME] [--json]     Live audio meter for every room member
   watch [ROOM_ID|NAME] [--json]      Watch joins, departures and room state
   create NAME [--listen IP:PORT]    Create another room (does not switch microphone)
   join HOST:PORT --code CODE [--name NAME] [--listen IP:PORT]
@@ -53,6 +54,8 @@ func groupCommand(ctx context.Context, dir string, args []string) error {
 		return nil
 	}
 	switch action {
+	case "levels":
+		return groupLevels(ctx, dir, args)
 	case "list", "status", "watch":
 		return groupRead(ctx, dir, action, args)
 	case "create", "join":
