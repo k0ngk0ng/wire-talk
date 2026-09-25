@@ -126,7 +126,7 @@ func initConfig(dir string, args []string) error {
 	fs.StringVar(&c.Listen, "listen", c.Listen, "UDP listen address")
 	fs.StringVar(&c.Input, "input", "", "input device ID, or none for file-only input (default device when empty)")
 	fs.StringVar(&c.Output, "output", "", "output device ID (default device when empty)")
-	fs.BoolVar(&c.Headphones, "headphones", false, "allow full duplex; disable speaker feedback guard when using headphones")
+	fs.BoolVar(&c.Headphones, "headphones", false, "legacy compatibility option; audio is always full duplex")
 	keyFile := fs.String("key-file", "", "read another member's room key from a private file")
 	peers := fs.String("peers", "", "comma-separated reachable UDP host:port addresses")
 	if err = fs.Parse(args); err != nil {
@@ -180,6 +180,19 @@ func join(ctx context.Context, dir string) (result error) {
 			result = err
 		}
 	}()
+	m.SetMicrophoneState(func() string {
+		input, _ := a.Devices()
+		switch {
+		case input.Disabled:
+			return "disabled"
+		case !input.Online:
+			return "offline"
+		case a.Muted.Load():
+			return "muted"
+		default:
+			return "ready"
+		}
+	})
 	started := time.Now()
 	api, err := control.Start(dir, func() any {
 		input, output := a.Devices()

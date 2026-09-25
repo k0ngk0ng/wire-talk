@@ -18,13 +18,14 @@ import (
 )
 
 type Status struct {
-	PeerGains map[string]float64 `json:"peer_gains,omitempty"`
-	RoomID    string             `json:"room_id"`
-	Name      string             `json:"name"`
-	Current   bool               `json:"current"`
-	Listening bool               `json:"listening"`
-	Online    bool               `json:"online"`
-	Error     string             `json:"error,omitempty"`
+	MicrophoneState string             `json:"microphone_state,omitempty"`
+	PeerGains       map[string]float64 `json:"peer_gains,omitempty"`
+	RoomID          string             `json:"room_id"`
+	Name            string             `json:"name"`
+	Current         bool               `json:"current"`
+	Listening       bool               `json:"listening"`
+	Online          bool               `json:"online"`
+	Error           string             `json:"error,omitempty"`
 	room.Status
 	Media media.Status `json:"media"`
 }
@@ -66,13 +67,14 @@ func openRoom(ctx context.Context, g config.Group) (*liveRoom, error) {
 func (l *liveRoom) close() { l.cancel(); l.r.Close(); <-l.done; l.m.Close() }
 
 type Manager struct {
-	mu      sync.Mutex
-	ctx     context.Context
-	dir     string
-	cfg     config.Config
-	rooms   map[string]*liveRoom
-	closed  bool
-	limiter volume.Limiter
+	microphoneState func() string
+	mu              sync.Mutex
+	ctx             context.Context
+	dir             string
+	cfg             config.Config
+	rooms           map[string]*liveRoom
+	closed          bool
+	limiter         volume.Limiter
 }
 
 func Open(ctx context.Context, dir string, c config.Config) (*Manager, error) {
@@ -98,11 +100,21 @@ func (m *Manager) Close() {
 		l.close()
 	}
 }
+func (m *Manager) SetMicrophoneState(f func() string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.microphoneState = f
+}
+
 func (m *Manager) snapshot() Snapshot {
+	mic := "unknown"
+	if m.microphoneState != nil {
+		mic = m.microphoneState()
+	}
 	s := Snapshot{OutputGainDB: m.cfg.OutputGainDB, Current: m.cfg.CurrentID(), Groups: []Status{}}
 	for _, g := range m.cfg.RoomConfigs() {
 		l := m.rooms[g.ID()]
-		status := Status{PeerGains: g.PeerGains, RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Online: l.online.Load(), Status: l.r.Status(), Media: l.m.Status()}
+		status := Status{MicrophoneState: mic, PeerGains: g.PeerGains, RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Online: l.online.Load(), Status: l.r.Status(), Media: l.m.Status()}
 		if err := l.err.Load(); err != nil {
 			status.Error = err.(string)
 		}

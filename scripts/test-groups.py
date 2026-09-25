@@ -49,6 +49,8 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as directory:
         first=groups('hub')['current']
         call('hub','group','rename',first,'alpha')
         call('hub','daemon','start')
+        view=call('hub','group','levels').stdout
+        assert view.count('Room alpha')==1 and 'Self (mic disabled)' in view and '\x1b' not in view,view
         call('hub','group','create','beta','--listen','127.0.0.1:0')
         beta=group('hub','beta')['room_id']
         assert groups('hub')['current']==first,'adding room unexpectedly changed microphone target'
@@ -76,6 +78,7 @@ with tempfile.TemporaryDirectory(dir=root/'.cache') as directory:
         assert groups('hub')['output_gain_db']==-3
         f=base/'tone.wav';tone(f,440)
         call('hub','input','start',str(f),'--loop')
+        assert 'Self (file input)' in call('hub','group','levels').stdout
         time.sleep(.3)
         a,b=record_pair('alpha')
         assert a>500 and b<1,(a,b,'audio leaked from alpha to beta')

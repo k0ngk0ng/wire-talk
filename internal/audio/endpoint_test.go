@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"encoding/binary"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -250,10 +251,73 @@ func TestReceiverNoiseDoesNotSuppressMicrophone(t *testing.T) {
 	playbackSample.Store(1000)
 	time.Sleep(150 * time.Millisecond)
 	before := received.Load()
-	time.Sleep(120 * time.Millisecond)
-	if received.Load() != before {
-		t.Fatal("loud speaker playback no longer protects microphone")
-	}
+	eventually(t, func() bool { return received.Load() > before+5 })
 	playbackSample.Store(180)
 	eventually(t, func() bool { return received.Load() > before+5 })
+}
+
+// Reproduces the production failure: continuous remote audio used to renew the
+// guard forever, silencing a working microphone in the default speaker mode.
+func TestContinuousPlaybackNeverSuppressesMicrophone(t *testing.T) {
+	var captured, heard atomic.Int32
+	factory := func(kind malgo.DeviceType, _ string, cb malgo.DeviceCallbacks) (deviceHandle, string, error) {
+		d := &fakeAudioDevice{stop: make(chan struct{}), done: make(chan struct{})}
+		go func() {
+			defer close(d.done)
+			tick := time.NewTicker(20 * time.Millisecond)
+			defer tick.Stop()
+			p := make([]byte, room.FrameBytes)
+			for {
+				select {
+				case <-d.stop:
+					return
+				case <-tick.C:
+					if kind == malgo.Capture {
+						for i := 0; i < len(p); i += 2 {
+							binary.LittleEndian.PutUint16(p[i:], 1000)
+						}
+						cb.Data(nil, p, room.FrameSamples)
+					} else {
+						cb.Data(p, nil, room.FrameSamples)
+						if Measure(p).RMS > 0 {
+							heard.Add(1)
+						}
+					}
+				}
+			}
+		}()
+		return d, "test", nil
+	}
+	a := openWithFactory(factory, "mic", "speaker", false, func(p []byte) {
+		if Measure(p).RMS > 0 {
+			captured.Add(1)
+		}
+	}, func(p []byte) {
+		for i := 0; i < len(p); i += 2 {
+			binary.LittleEndian.PutUint16(p[i:], 20000)
+		}
+	})
+	defer a.Close()
+	eventually(t, func() bool { return captured.Load() > 15 && heard.Load() > 15 })
+	before := captured.Load()
+	eventually(t, func() bool { return captured.Load() > before+15 })
+	a.Muted.Store(true)
+	time.Sleep(80 * time.Millisecond)
+	before = captured.Load()
+	time.Sleep(120 * time.Millisecond)
+	if captured.Load() != before {
+		t.Fatal("explicit microphone mute ignored")
+	}
+	a.Muted.Store(false)
+	eventually(t, func() bool { return captured.Load() > before+5 })
+	a.OutputMuted.Store(true)
+	time.Sleep(100 * time.Millisecond)
+	plays := heard.Load()
+	before = captured.Load()
+	time.Sleep(150 * time.Millisecond)
+	if heard.Load() != plays || captured.Load() <= before {
+		t.Fatal("output mute affected microphone or failed to mute playback")
+	}
+	a.OutputMuted.Store(false)
+	eventually(t, func() bool { return heard.Load() > plays+5 && captured.Load() > before+5 })
 }

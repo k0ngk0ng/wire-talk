@@ -2,7 +2,6 @@
 package audio
 
 import (
-	"encoding/binary"
 	"github.com/gen2brain/malgo"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
 	"sync"
@@ -67,7 +66,9 @@ func openWithBackends(backends []malgo.Backend, input, output string, headphones
 	return openWithFactory(nativeFactory(backends), input, output, headphones, capture, playback), nil
 }
 
-func openWithFactory(factory deviceFactory, input, output string, headphones bool, capture func([]byte), playback func([]byte)) *Audio {
+// The legacy headphones parameter is retained for config/API compatibility.
+// Playback must never gate capture: remote noise otherwise starves local speech.
+func openWithFactory(factory deviceFactory, input, output string, _ bool, capture func([]byte), playback func([]byte)) *Audio {
 	a := &Audio{stop: make(chan struct{}), done: make(chan struct{})}
 	a.input = newEndpoint(malgo.Capture, input)
 	a.output = newEndpoint(malgo.Playback, output)
@@ -85,26 +86,21 @@ func openWithFactory(factory deviceFactory, input, output string, headphones boo
 		ticker := time.NewTicker(time.Duration(room.FrameSamples) * time.Second / room.SampleRate)
 		defer ticker.Stop()
 		in, out := make([]byte, room.FrameBytes), make([]byte, room.FrameBytes)
-		guard := 0
 		for {
 			select {
 			case <-a.stop:
 				return
 			case <-ticker.C:
 				a.input.pcm.read(in)
-				if a.Muted.Load() || !a.input.snapshot().Online || (!headphones && guard > 0) {
+				if a.Muted.Load() || !a.input.snapshot().Online {
 					clear(in)
 				}
 				capture(in)
-				guard = max(0, guard-room.FrameSamples)
 				playback(out)
 				if a.OutputMuted.Load() {
 					clear(out)
 				}
 				if a.output.snapshot().Online {
-					if !headphones && audible(out) {
-						guard = room.SampleRate / 5
-					}
 					a.output.pcm.write(out)
 				}
 			}
@@ -119,19 +115,6 @@ func (a *Audio) Close() {
 	<-a.done
 	beforeDeviceClose()
 	a.workers.Wait()
-}
-
-// audible ignores background noise below -40 dBFS RMS. The previous -50 dBFS
-// threshold let a wireless receiver's idle noise continuously suppress the
-// other participant's microphone. This is speaker protection, not echo cancellation.
-func audible(pcm []byte) bool {
-	const minimumRMS = 328 // 32768 * 10^(-40/20), rounded up.
-	var energy int64
-	for i := 0; i+1 < len(pcm); i += 2 {
-		v := int64(int16(binary.LittleEndian.Uint16(pcm[i:])))
-		energy += v * v
-	}
-	return len(pcm) > 0 && energy > int64(len(pcm)/2)*minimumRMS*minimumRMS
 }
 
 // copyPlayback consumes the same audio while muted, preventing queued speech

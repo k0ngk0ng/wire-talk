@@ -84,7 +84,7 @@ func pairCommand(ctx context.Context, dir string, args []string) error {
 	fs.StringVar(&c.Listen, "listen", c.Listen, "local UDP listen address")
 	fs.StringVar(&c.Input, "input", "", "input device ID (default when empty)")
 	fs.StringVar(&c.Output, "output", "", "output device ID (default when empty)")
-	fs.BoolVar(&c.Headphones, "headphones", false, "allow full duplex when using headphones")
+	fs.BoolVar(&c.Headphones, "headphones", false, "legacy compatibility option; audio is always full duplex")
 	// Support both HOST:PORT --code CODE and --code CODE HOST:PORT.
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		args = append(append([]string{}, args[1:]...), args[0])

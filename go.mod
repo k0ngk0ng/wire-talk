@@ -7,6 +7,7 @@ require (
 	github.com/gopxl/beep v1.4.1
 	github.com/k0ngk0ng/wirectl v0.1.0
 	github.com/schollz/pake/v3 v3.2.0
+	golang.org/x/term v0.30.0
 	golang.org/x/sys v0.31.0
 )
 

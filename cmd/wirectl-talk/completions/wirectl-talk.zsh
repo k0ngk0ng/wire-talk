@@ -140,7 +140,7 @@ _wirectl_talk_completion() {
                 '--listen[UDP listen address]:address:' \
                 '--input[input device ID]:device ID:' \
                 '--output[output device ID]:device ID:' \
-                '--headphones[allow full duplex]' \
+                '--headphones[legacy compatibility option]' \
                 '--key-file[read a room key from a private file]:file:_files' \
                 '--peers[comma-separated reachable UDP addresses]:addresses:' \
                 '--state-dir[configuration directory]:directory:_files -/'
@@ -151,7 +151,7 @@ _wirectl_talk_completion() {
                 '--listen[local UDP listen address]:address:' \
                 '--input[input device ID]:device ID:' \
                 '--output[output device ID]:device ID:' \
-                '--headphones[allow full duplex]' \
+                '--headphones[legacy compatibility option]' \
                 '--state-dir[configuration directory]:directory:_files -/' \
                 '1:inviter host and port:'
             ;;

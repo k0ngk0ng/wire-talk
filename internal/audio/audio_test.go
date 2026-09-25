@@ -2,7 +2,6 @@ package audio
 
 import (
 	"bytes"
-	"encoding/binary"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,26 +37,6 @@ func TestNativeNullDeviceRunsDuplexCallbacks(t *testing.T) {
 		t.Fatal("capture continued after close")
 	}
 }
-func TestSpeakerGuardEnergy(t *testing.T) {
-	pcm := make([]byte, room.FrameBytes)
-	if audible(pcm) {
-		t.Fatal("silence gated microphone")
-	}
-	// Wireless receiver idle noise observed in the field: about -46 dBFS.
-	for i := 0; i < len(pcm); i += 2 {
-		binary.LittleEndian.PutUint16(pcm[i:], 180)
-	}
-	if audible(pcm) {
-		t.Fatal("receiver idle noise gated microphone")
-	}
-	for i := 0; i < len(pcm); i += 2 {
-		binary.LittleEndian.PutUint16(pcm[i:], 1000)
-	}
-	if !audible(pcm) {
-		t.Fatal("speaker output did not gate microphone")
-	}
-}
-
 func TestMutedPlaybackConsumesAudioAndResumesAtCurrentPosition(t *testing.T) {
 	frame := []byte{1, 2, 3, 4, 5, 6}
 	out := []byte{99, 99, 99, 99}
