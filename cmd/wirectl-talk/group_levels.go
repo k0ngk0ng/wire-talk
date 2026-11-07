@@ -104,6 +104,9 @@ func selfAudioState(g groups.Status) string {
 	if !g.Current {
 		return "other room"
 	}
+	if g.Call != nil && g.Call.State != "active" {
+		return "call " + g.Call.State
+	}
 	if g.Media.Input.State == "playing" {
 		return "file input"
 	}

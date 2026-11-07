@@ -34,6 +34,7 @@ func groupHelp() {
   mute [ROOM_ID|NAME]               Stop listening to a room
   unmute [ROOM_ID|NAME]             Listen to a room again
   rename ROOM_ID|NAME NEW_NAME      Change a local room label
+  mode ROOM_ID|NAME room|direct     Set connection mode while talk is stopped
   leave ROOM_ID|NAME                Remove a non-current room
 Omitted room means the current speaking room. Ctrl+C exits watch only.`)
 }
@@ -84,7 +85,16 @@ func groupCommand(ctx context.Context, dir string, args []string) error {
 			}
 		}
 		fmt.Printf("Room: %s (%s)\n", cleanText(g.Name), g.ID())
-		return serveInvite(ctx, config.Config{Key: g.Key, Listen: g.Listen})
+		return serveInvite(ctx, config.Config{Key: g.Key, Listen: g.Listen, Mode: g.Mode})
+	case "mode":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: group mode ROOM_ID|NAME room|direct (stop talk first)")
+		}
+		if err := changeGroup(ctx, dir, config.GroupChange{Action: "mode", Room: args[0], Mode: args[1]}); err != nil {
+			return err
+		}
+		fmt.Println("Connection mode saved.")
+		return nil
 	case "use", "mute", "unmute", "rename", "leave":
 		required := 1
 		if action == "mute" || action == "unmute" {
@@ -132,7 +142,15 @@ func readGroups(ctx context.Context, dir string) (groups.Snapshot, error) {
 	}
 	s := groups.Snapshot{OutputGainDB: c.OutputGainDB, Current: c.CurrentID(), Groups: []groups.Status{}}
 	for _, g := range c.RoomConfigs() {
-		s.Groups = append(s.Groups, groups.Status{PeerGains: g.PeerGains, RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Status: room.Status{Listen: g.Listen, Peers: []room.Peer{}}})
+		mode := g.Mode
+		if mode == "" {
+			mode = "room"
+		}
+		state := room.Status{Mode: mode, Listen: g.Listen, Peers: []room.Peer{}}
+		if mode == "direct" {
+			state.Call = &room.CallStatus{State: "offline"}
+		}
+		s.Groups = append(s.Groups, groups.Status{PeerGains: g.PeerGains, RoomID: g.ID(), Name: g.Name, Current: g.ID() == s.Current, Listening: !g.Muted, Status: state})
 	}
 	return s, nil
 }
@@ -274,6 +292,9 @@ func printGroupList(s groups.Snapshot) {
 		if g.Online {
 			state = "online"
 		}
+		if g.Call != nil && g.Online {
+			state = g.Call.State
+		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n", g.RoomID, cleanText(g.Name), speaking, listening, state, len(g.Peers))
 	}
 	w.Flush()
@@ -292,6 +313,9 @@ func printGroupStatus(g groups.Status) {
 		listening = "on"
 	}
 	fmt.Printf("Room:       %s\nRoom ID:    %s\nState:      %s\nSpeaking:   %s\nListening:  %s\nListen:     %s\n", cleanText(g.Name), g.RoomID, state, speaking, listening, cleanText(g.Listen))
+	if g.Call != nil {
+		fmt.Printf("Connection: direct · %s\n", g.Call.State)
+	}
 	if g.Error != "" {
 		fmt.Println("Error:     ", cleanText(g.Error))
 	}
@@ -324,6 +348,7 @@ func groupListen() (string, error) {
 func groupAdd(ctx context.Context, dir, action string, args []string) error {
 	fs := flag.NewFlagSet("group "+action, flag.ContinueOnError)
 	name := fs.String("name", "", "local room name")
+	mode := fs.String("mode", "", "connection mode for create: room or direct; join inherits invitation mode")
 	listen := fs.String("listen", "", "local TCP/UDP listen address")
 	code := fs.String("code", "", "one-use pairing code")
 	if err := fs.Parse(positionalLast(args)); err != nil {
@@ -331,6 +356,9 @@ func groupAdd(ctx context.Context, dir, action string, args []string) error {
 	}
 	if fs.NArg() != 1 || action == "join" && *code == "" {
 		return fmt.Errorf("use group create NAME or group join HOST:PORT --code CODE")
+	}
+	if action == "join" && *mode != "" {
+		return fmt.Errorf("group join inherits mode from the invitation; omit --mode")
 	}
 	fresh, err := config.New()
 	if err != nil {
@@ -347,8 +375,8 @@ func groupAdd(ctx context.Context, dir, action string, args []string) error {
 	} else if *name == "" {
 		*name = fs.Arg(0)
 	}
-	g := config.Group{Name: *name, Key: fresh.Key, Listen: *listen, Peers: []string{}}
-	if err := (config.Config{Key: g.Key, Name: g.Name, Listen: g.Listen}).ValidateGroups(); err != nil {
+	g := config.Group{Mode: *mode, Name: *name, Key: fresh.Key, Listen: *listen, Peers: []string{}}
+	if err := (config.Config{Mode: g.Mode, Key: g.Key, Name: g.Name, Listen: g.Listen}).ValidateGroups(); err != nil {
 		return err
 	}
 	old, loadErr := config.Load(dir)
@@ -365,15 +393,17 @@ func groupAdd(ctx context.Context, dir, action string, args []string) error {
 		if err != nil || address.Port == 0 || len(address.IP) == 0 || address.IP.IsUnspecified() || address.IP.IsMulticast() {
 			return fmt.Errorf("provide the inviter's reachable IP:port")
 		}
-		key, err := pairing.Receive(ctx, address.String(), *code)
+		key, pairedMode, err := pairing.ReceiveWithMode(ctx, address.String(), *code)
 		if err != nil {
 			return fmt.Errorf("pairing failed: %w", err)
 		}
 		g.Key = base64.RawURLEncoding.EncodeToString(key)
+		g.Mode = pairedMode
 		g.Peers = []string{fs.Arg(0)}
 	}
 	if loadErr != nil {
 		fresh.Key = g.Key
+		fresh.Mode = g.Mode
 		fresh.Listen = g.Listen
 		fresh.Peers = g.Peers
 		fresh.Name = g.Name

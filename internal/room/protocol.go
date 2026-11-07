@@ -92,11 +92,14 @@ func (c *codec) open(data []byte, now time.Time) (packet, error) {
 	copy(p.Sender[:], plain[9:25])
 	p.Seq = binary.BigEndian.Uint64(plain[25:33])
 	p.Body = plain[33:]
-	if p.Kind != hello && p.Kind != voice {
+	if p.Kind != hello && p.Kind != voice && p.Kind != directSignal {
 		return packet{}, errors.New("unknown packet kind")
 	}
-	if p.Kind == voice && len(p.Body) != FrameBytes {
+	if p.Kind == voice && len(p.Body) != FrameBytes && len(p.Body) != FrameBytes+16 {
 		return packet{}, errors.New("invalid audio frame")
+	}
+	if p.Kind == directSignal && (len(p.Body) != 34 || p.Body[0] != 1 || p.Body[1] > 3) {
+		return packet{}, errors.New("invalid direct heartbeat")
 	}
 	c.seen[nonce] = stamp + 16
 	return p, nil

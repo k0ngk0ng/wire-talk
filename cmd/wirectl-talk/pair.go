@@ -36,7 +36,7 @@ func inviteCommand(ctx context.Context, dir string, args []string) error {
 	if err != nil {
 		return err
 	}
-	return serveInvite(ctx, config.Config{Key: g.Key, Listen: g.Listen})
+	return serveInvite(ctx, config.Config{Key: g.Key, Listen: g.Listen, Mode: g.Mode})
 }
 
 func serveInvite(ctx context.Context, c config.Config) error {
@@ -52,7 +52,7 @@ func serveInvite(ctx context.Context, c config.Config) error {
 	if err != nil {
 		return err
 	}
-	i, err := pairing.New(c.Listen, key)
+	i, err := pairing.NewWithMode(c.Listen, key, c.Mode)
 	if err != nil {
 		return err
 	}
@@ -114,11 +114,12 @@ func pairCommand(ctx context.Context, dir string, args []string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	key, err := pairing.Receive(ctx, remote.String(), *code)
+	key, mode, err := pairing.ReceiveWithMode(ctx, remote.String(), *code)
 	if err != nil {
 		return fmt.Errorf("pairing failed (check code, invitation and TCP reachability): %w", err)
 	}
 	c.Key = base64.RawURLEncoding.EncodeToString(key)
+	c.Mode = mode
 	c.Peers = []string{address}
 	if err = config.Save(dir, c); err != nil {
 		return fmt.Errorf("invitation consumed but saving the room failed: %w", err)

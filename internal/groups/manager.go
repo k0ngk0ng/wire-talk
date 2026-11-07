@@ -48,7 +48,7 @@ func openRoom(ctx context.Context, g config.Group) (*liveRoom, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := room.Open(g.Listen, g.Peers, key)
+	r, err := room.OpenMode(g.Listen, g.Peers, key, g.Mode)
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +146,7 @@ func (m *Manager) Playback(out []byte) {
 	for _, g := range m.cfg.RoomConfigs() {
 		l := m.rooms[g.ID()]
 		l.m.PlaybackMonitor(frame[:], monitor[:], g.PeerGains) // Drain even muted rooms; recordings remain independent.
+		l.r.CallTone(monitor[:])
 		if g.Muted || !l.online.Load() {
 			continue
 		}
@@ -160,6 +161,14 @@ func (m *Manager) Apply(cmd config.GroupChange) error {
 	defer m.mu.Unlock()
 	if m.closed {
 		return fmt.Errorf("session stopped")
+	}
+	if cmd.Action == "mode" {
+		return fmt.Errorf("stop talk before changing connection mode")
+	}
+	if cmd.Action == "use" {
+		if call := m.rooms[m.cfg.CurrentID()].r.Status().Call; call != nil && call.State != "idle" {
+			return fmt.Errorf("hang up before switching the speaking connection")
+		}
 	}
 	if cmd.Action == "peer-gain" {
 		g, err := m.cfg.FindGroup(cmd.Room)
@@ -217,6 +226,10 @@ func (m *Manager) Apply(cmd config.GroupChange) error {
 	return nil
 }
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/call" {
+		m.serveCall(w, r)
+		return
+	}
 	if r.URL.Path == "/media" {
 		// Resolve the target under the same lock as routing changes. File input may
 		// only start in the speaking room. Recording can be controlled per room.

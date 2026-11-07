@@ -1,6 +1,7 @@
 package room
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -23,16 +24,20 @@ type Peer struct {
 	levels   levelWindow
 }
 type Status struct {
-	SelfLevel Level  `json:"self_level"`
-	Listen    string `json:"listen"`
-	ID        string `json:"id"`
-	Peers     []Peer `json:"peers"`
-	Sent      uint64 `json:"sent_frames"`
-	Received  uint64 `json:"received_frames"`
-	Rejected  uint64 `json:"rejected_packets"`
-	Dropped   uint64 `json:"dropped_frames"`
+	Mode      string      `json:"mode"`
+	Call      *CallStatus `json:"call,omitempty"`
+	SelfLevel Level       `json:"self_level"`
+	Listen    string      `json:"listen"`
+	ID        string      `json:"id"`
+	Peers     []Peer      `json:"peers"`
+	Sent      uint64      `json:"sent_frames"`
+	Received  uint64      `json:"received_frames"`
+	Rejected  uint64      `json:"rejected_packets"`
+	Dropped   uint64      `json:"dropped_frames"`
 }
 type Room struct {
+	direct                            *directState
+	wake                              chan struct{}
 	conn                              *net.UDPConn
 	codec                             *codec
 	id                                [16]byte
@@ -46,6 +51,16 @@ type Room struct {
 }
 
 func Open(listen string, seeds []string, key []byte) (*Room, error) {
+	return OpenMode(listen, seeds, key, "room")
+}
+
+func OpenMode(listen string, seeds []string, key []byte, mode string) (*Room, error) {
+	if mode != "" && mode != "room" && mode != "direct" {
+		return nil, fmt.Errorf("mode must be room or direct")
+	}
+	if mode == "direct" && len(seeds) > 1 {
+		return nil, fmt.Errorf("direct mode allows one remote peer")
+	}
 	c, err := newCodec(key)
 	if err != nil {
 		return nil, err
@@ -54,7 +69,10 @@ func Open(listen string, seeds []string, key []byte) (*Room, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Room{codec: c, mixer: NewMixer(), peers: make(map[[16]byte]Peer), audio: make(chan []byte, 3)}
+	r := &Room{codec: c, mixer: NewMixer(), peers: make(map[[16]byte]Peer), audio: make(chan []byte, 3), wake: make(chan struct{}, 1)}
+	if mode == "direct" {
+		r.direct = &directState{ended: make(map[[16]byte]time.Time)}
+	}
 	if _, err = rand.Read(r.id[:]); err != nil {
 		return nil, err
 	}
@@ -66,7 +84,7 @@ func Open(listen string, seeds []string, key []byte) (*Room, error) {
 		if e != nil {
 			return nil, e
 		}
-		p := a.AddrPort()
+		p := canonicalAddress(a.AddrPort())
 		if !validAddress(p) {
 			return nil, fmt.Errorf("invalid peer %q", s)
 		}
@@ -81,29 +99,44 @@ func Open(listen string, seeds []string, key []byte) (*Room, error) {
 func validAddress(a netip.AddrPort) bool {
 	return a.IsValid() && a.Port() != 0 && !a.Addr().IsUnspecified() && !a.Addr().IsMulticast() && a.Addr().Unmap() != netip.MustParseAddr("255.255.255.255")
 }
+
+func canonicalAddress(a netip.AddrPort) netip.AddrPort {
+	return netip.AddrPortFrom(a.Addr().Unmap(), a.Port())
+}
 func (r *Room) Close() error { return r.conn.Close() }
 func (r *Room) Capture(frame []byte) {
 	if len(frame) != FrameBytes {
 		return
 	}
-	p := append([]byte(nil), frame...)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var p []byte
+	if r.direct != nil {
+		if r.direct.state != 3 {
+			return
+		}
+		p = append(p, r.direct.token[:]...)
+	}
+	p = append(p, frame...)
 	select {
 	case r.audio <- p:
-		r.mu.Lock()
 		r.selfLevels.add(frame, time.Now())
-		r.mu.Unlock()
 	default:
 		r.dropped.Add(1)
 	}
 }
-func (r *Room) Playback(out []byte) { r.mixer.Read(out) }
+func (r *Room) Playback(out []byte) { r.PlaybackSelectedMonitor(out, nil, [16]byte{}, nil, nil) }
 func (r *Room) PlaybackSelected(out, selected []byte, peer [16]byte) {
-	r.mixer.ReadSelected(out, selected, peer)
+	r.PlaybackSelectedMonitor(out, selected, peer, nil, nil)
 }
 func (r *Room) Status() Status {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s := Status{SelfLevel: r.selfLevels.snapshot(time.Now()), Listen: r.conn.LocalAddr().String(), ID: hex.EncodeToString(r.id[:]), Peers: []Peer{}, Sent: r.sent.Load(), Received: r.received.Load(), Rejected: r.rejected.Load(), Dropped: r.dropped.Load()}
+	s.Mode = "room"
+	if r.direct != nil {
+		s.Mode, s.Call = "direct", r.callStatusLocked()
+	}
 	for _, p := range r.peers {
 		if time.Since(p.LastSeen) < 6*time.Second {
 			p.Level = p.levels.snapshot(time.Now())
@@ -136,6 +169,7 @@ func (r *Room) Run(ctx context.Context) error {
 			}
 			return err
 		}
+		from = canonicalAddress(from)
 		now := time.Now()
 		r.codec.prune(now)
 		p, err := r.codec.open(buf[:n], now)
@@ -147,6 +181,17 @@ func (r *Room) Run(ctx context.Context) error {
 			continue
 		}
 		r.mu.Lock()
+		r.expireCallLocked(now)
+		if r.direct != nil {
+			if p.Kind == hello || p.Kind == directSignal && !r.receiveDirectLocked(p, now) || p.Kind == voice && p.Sender != r.direct.remote {
+				r.mu.Unlock()
+				r.rejected.Add(1)
+				continue
+			}
+		} else if p.Kind == directSignal {
+			r.mu.Unlock()
+			continue
+		}
 		for id, peer := range r.peers {
 			if now.Sub(peer.LastSeen) > 30*time.Second {
 				delete(r.peers, id)
@@ -160,14 +205,17 @@ func (r *Room) Run(ctx context.Context) error {
 		peer := r.peers[p.Sender]
 		peer.ID, peer.Address, peer.LastSeen = hex.EncodeToString(p.Sender[:]), from.String(), now
 		if p.Kind == voice {
-			peer.levels.add(p.Body, now)
+			pcm, allowed := r.directAudioLocked(p)
+			if !allowed {
+				r.mu.Unlock()
+				continue
+			}
+			peer.levels.add(pcm, now)
+			r.received.Add(1)
+			r.mixer.Push(p.Sender, p.Seq, pcm)
 		}
 		r.peers[p.Sender] = peer
 		r.mu.Unlock()
-		if p.Kind == voice {
-			r.received.Add(1)
-			r.mixer.Push(p.Sender, p.Seq, p.Body)
-		}
 		if p.Kind == hello {
 			var candidates []string
 			if json.Unmarshal(p.Body, &candidates) == nil && len(candidates) <= MaxPeers {
@@ -177,6 +225,7 @@ func (r *Room) Run(ctx context.Context) error {
 					if e != nil || !validAddress(a) {
 						continue
 					}
+					a = canonicalAddress(a)
 					found := false
 					for _, v := range r.seeds {
 						if v == a {
@@ -193,7 +242,11 @@ func (r *Room) Run(ctx context.Context) error {
 	}
 }
 func (r *Room) sendLoop(ctx context.Context) {
-	ticker := time.NewTicker(time.Second)
+	interval := time.Second
+	if r.direct != nil {
+		interval = 250 * time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	var seq uint64
 	send := func(kind byte, body []byte) {
@@ -204,6 +257,10 @@ func (r *Room) sendLoop(ctx context.Context) {
 		}
 		destinations := map[netip.AddrPort]bool{}
 		r.mu.Lock()
+		defer r.mu.Unlock()
+		if kind == voice && r.direct != nil && (r.direct.state != 3 || len(body) != FrameBytes+16 || !bytes.Equal(body[:16], r.direct.token[:])) {
+			return
+		}
 		for _, p := range r.seeds {
 			destinations[p] = true
 		}
@@ -215,7 +272,6 @@ func (r *Room) sendLoop(ctx context.Context) {
 				}
 			}
 		}
-		r.mu.Unlock()
 		for addr := range destinations {
 			if _, err := r.conn.WriteToUDPAddrPort(b, addr); err == nil && kind == voice {
 				r.sent.Add(1)
@@ -223,6 +279,10 @@ func (r *Room) sendLoop(ctx context.Context) {
 		}
 	}
 	announce := func() {
+		if r.direct != nil {
+			send(directSignal, r.directBody())
+			return
+		}
 		s := r.Status()
 		addresses := []string{}
 		for _, p := range s.Peers {
@@ -241,6 +301,8 @@ func (r *Room) sendLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			announce()
+		case <-r.wake:
+			announce()
 		case frame := <-r.audio:
 			send(voice, frame)
 		}
@@ -251,12 +313,18 @@ func (r *Room) sendLoop(ctx context.Context) {
 func (r *Room) PlaybackSelectedMonitor(out, selected []byte, peer [16]byte, monitor []float64, gains map[string]float64) {
 	factors := make(map[[16]byte]float64, len(gains))
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.direct != nil && r.direct.state != 3 {
+		clear(out)
+		clear(selected)
+		clear(monitor)
+		return
+	}
 	for id, p := range r.peers {
 		address, _ := volume.Address(p.Address)
 		if db, ok := gains[address]; ok {
 			factors[id] = volume.Factor(db)
 		}
 	}
-	r.mu.Unlock()
 	r.mixer.ReadSelectedMonitor(out, selected, peer, monitor, factors)
 }

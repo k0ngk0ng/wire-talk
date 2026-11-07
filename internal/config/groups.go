@@ -17,6 +17,7 @@ import (
 const MaxGroups = 16
 
 type Group struct {
+	Mode      string             `json:"mode,omitempty"`
 	PeerGains map[string]float64 `json:"peer_gains,omitempty"`
 	Name      string             `json:"name"`
 	Key       string             `json:"key"`
@@ -35,7 +36,7 @@ func (c Config) RoomConfigs() []Group {
 	if name == "" {
 		name = "default"
 	}
-	primary := Group{Name: name, Key: c.Key, Listen: c.Listen, Peers: c.Peers, Muted: c.ListenMuted, PeerGains: c.PeerGains}
+	primary := Group{Mode: c.Mode, Name: name, Key: c.Key, Listen: c.Listen, Peers: c.Peers, Muted: c.ListenMuted, PeerGains: c.PeerGains}
 	return append([]Group{primary}, c.Groups...)
 }
 func (c Config) CurrentID() string {
@@ -70,6 +71,12 @@ func (c Config) ValidateGroups() error {
 	}
 	ids, names := map[string]bool{}, map[string]bool{}
 	for _, g := range rooms {
+		if g.Mode != "" && g.Mode != "room" && g.Mode != "direct" {
+			return fmt.Errorf("mode must be room or direct")
+		}
+		if g.Mode == "direct" && len(g.Peers) > 1 {
+			return fmt.Errorf("direct mode allows one remote peer")
+		}
 		if len(g.PeerGains) > 128 {
 			return fmt.Errorf("at most 128 member gain settings per room")
 		}
@@ -107,6 +114,7 @@ func (c Config) ValidateGroups() error {
 }
 
 type GroupChange struct {
+	Mode   string   `json:"mode,omitempty"`
 	Peer   string   `json:"peer,omitempty"`
 	GainDB *float64 `json:"gain_db,omitempty"`
 	Action string   `json:"action"`
@@ -137,8 +145,13 @@ func (c Config) Changed(cmd GroupChange) (Config, error) {
 		switch cmd.Action {
 		case "use":
 			c.ActiveGroup = id
-		case "mute", "unmute", "rename", "peer-gain":
-			if cmd.Action == "peer-gain" {
+		case "mute", "unmute", "rename", "peer-gain", "mode":
+			if cmd.Action == "mode" {
+				if cmd.Mode != "room" && cmd.Mode != "direct" {
+					return c, fmt.Errorf("mode must be room or direct")
+				}
+				g.Mode = cmd.Mode
+			} else if cmd.Action == "peer-gain" {
 				if cmd.GainDB == nil {
 					return c, fmt.Errorf("gain_db is required")
 				}
@@ -165,6 +178,7 @@ func (c Config) Changed(cmd GroupChange) (Config, error) {
 			}
 			if id == c.RoomConfigs()[0].ID() {
 				c.Name = g.Name
+				c.Mode = g.Mode
 				c.ListenMuted = g.Muted
 				c.PeerGains = g.PeerGains
 			} else {
@@ -181,6 +195,7 @@ func (c Config) Changed(cmd GroupChange) (Config, error) {
 			if id == c.RoomConfigs()[0].ID() {
 				next := c.Groups[0]
 				c.Key = next.Key
+				c.Mode = next.Mode
 				c.Listen = next.Listen
 				c.Peers = next.Peers
 				c.Name = next.Name

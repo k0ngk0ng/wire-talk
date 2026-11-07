@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	Mode         string             `json:"mode,omitempty"`
 	OutputGainDB float64            `json:"output_gain_db,omitempty"`
 	PeerGains    map[string]float64 `json:"peer_gains,omitempty"`
 	Headphones   bool               `json:"headphones"`
@@ -58,7 +59,7 @@ func Load(dir string) (Config, error) {
 	return c, err
 }
 func Save(dir string, c Config) error {
-	if _, err := c.KeyBytes(); err != nil {
+	if err := c.ValidateGroups(); err != nil {
 		return err
 	}
 	if err := private.Dir(dir); err != nil {

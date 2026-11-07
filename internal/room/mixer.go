@@ -20,7 +20,8 @@ type Mixer struct {
 	streams map[[16]byte]*stream
 }
 
-func NewMixer() *Mixer { return &Mixer{streams: make(map[[16]byte]*stream)} }
+func NewMixer() *Mixer  { return &Mixer{streams: make(map[[16]byte]*stream)} }
+func (m *Mixer) Clear() { m.mu.Lock(); clear(m.streams); m.mu.Unlock() }
 func (m *Mixer) Push(id [16]byte, seq uint64, pcm []byte) {
 	if len(pcm) != FrameBytes {
 		return

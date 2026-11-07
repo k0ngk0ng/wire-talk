@@ -17,6 +17,7 @@ import (
 	"github.com/k0ngk0ng/wire-talk/internal/config"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
 	"github.com/k0ngk0ng/wire-talk/internal/groups"
+	"github.com/k0ngk0ng/wire-talk/internal/handset"
 	"github.com/k0ngk0ng/wire-talk/internal/service"
 	"github.com/k0ngk0ng/wire-talk/internal/update"
 	"github.com/k0ngk0ng/wirectl/cli"
@@ -82,6 +83,7 @@ func run(ctx context.Context, args []string) error {
 		return cli.Command{Summary: summary, Run: f}
 	}
 	app := cli.App{Name: "wirectl talk", Description: "direct encrypted microphone and speaker conversations", Commands: map[string]cli.Command{
+		"call":       cmd("Dial, answer, hang up or inspect a direct connection", func(c context.Context, a []string) error { return callCommand(c, dir, a) }),
 		"group":      cmd("Manage rooms, members, speaking target and listening", func(c context.Context, a []string) error { return groupCommand(c, dir, a) }),
 		"record":     cmd("Record all received audio or a selected peer", func(c context.Context, a []string) error { return mediaCommand(c, dir, "record", a) }),
 		"input":      cmd("Send an audio file instead of/alongside microphone", func(c context.Context, a []string) error { return mediaCommand(c, dir, "input", a) }),
@@ -123,6 +125,7 @@ func initConfig(dir string, args []string) error {
 		return err
 	}
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.StringVar(&c.Mode, "mode", "", "connection mode: room (default) or direct (dial before talking)")
 	fs.StringVar(&c.Listen, "listen", c.Listen, "UDP listen address")
 	fs.StringVar(&c.Input, "input", "", "input device ID, or none for file-only input (default device when empty)")
 	fs.StringVar(&c.Output, "output", "", "output device ID (default device when empty)")
@@ -194,6 +197,19 @@ func join(ctx context.Context, dir string) (result error) {
 		}
 	})
 	started := time.Now()
+	keys := handset.Start(ctx, func() bool {
+		for _, g := range m.Snapshot().Groups {
+			if g.Current {
+				return g.Mode == "direct"
+			}
+		}
+		return false
+	}, func(action string) {
+		if err := m.Handset(action); err != nil {
+			fmt.Fprintln(os.Stderr, "Handset:", err)
+		}
+	})
+	defer keys.Close()
 	api, err := control.Start(dir, func() any {
 		input, output := a.Devices()
 		snapshot := m.Snapshot()
@@ -204,8 +220,8 @@ func join(ctx context.Context, dir string) (result error) {
 				break
 			}
 		}
-		return sessionStatus{OutputGainDB: snapshot.OutputGainDB, Status: current.Status, GroupID: current.RoomID, GroupName: current.Name, Groups: snapshot.Groups, Input: input.Name, Output: output.Name, InputDevice: &input, OutputDevice: &output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: current.Media}
-	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) }, m, m)
+		return sessionStatus{Handset: keys.Status(), OutputGainDB: snapshot.OutputGainDB, Status: current.Status, GroupID: current.RoomID, GroupName: current.Name, Groups: snapshot.Groups, Input: input.Name, Output: output.Name, InputDevice: &input, OutputDevice: &output, Muted: a.Muted.Load(), OutputMuted: a.OutputMuted.Load(), Started: started, Version: version, Media: current.Media}
+	}, cancel, func(m bool) { a.Muted.Store(m) }, func(m bool) { a.OutputMuted.Store(m) }, m, m, m)
 	if err != nil {
 		return err
 	}

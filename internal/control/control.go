@@ -103,6 +103,9 @@ func Start(dir string, status func() any, stop func(), mute func(bool), muteOutp
 	if len(media) > 1 {
 		mux.Handle("/groups", media[1])
 	}
+	if len(media) > 2 {
+		mux.Handle("/call", media[2])
+	}
 	s.server = &http.Server{ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.endpoint.Token)) != 1 {
 			w.WriteHeader(401)

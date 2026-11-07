@@ -117,6 +117,63 @@ wirectl talk daemon start
 旧的 `init --key-file ./room.key --peers IP:PORT` 方式仍可使用，与数字配对加入的成员
 使用同一种语音协议；日常使用优先选择临时数字码。
 
+## 一对一直连电话
+
+`direct` 模式把连接与通话分开：两端上线后只交换加密心跳；拨号后对方响铃，接听后才双向传输语音。挂断后回到待机，连接继续保活。原有 `room` 模式仍为加入后直接通话，已有配置默认保持此行为。
+
+首次创建电话连接：
+
+```sh
+# 机器 A
+wirectl talk devices
+wirectl talk init --mode direct --input INPUT_ID --output OUTPUT_ID
+wirectl talk invite
+
+# 机器 B：自动保存邀请中的 direct 模式
+wirectl talk pair HOST:51830 --code CODE --input INPUT_ID --output OUTPUT_ID
+wirectl talk daemon start
+
+# 机器 A：邀请完成后启动
+wirectl talk daemon start
+```
+
+两个可执行文件都需更新到支持电话模式的版本。旧客户端会拒绝电话邀请，避免退回加入即通话。每个电话连接只接纳一个在线对端，不发现或混入第三个成员。
+
+已有配对可在**两端停止服务后**切换，无需重新配对：
+
+```sh
+wirectl talk daemon stop
+wirectl talk group mode default direct
+wirectl talk daemon start
+```
+
+`default` 可替换为连接名称或房间 ID。两端都要执行；恢复群聊使用 `group mode default room`。也可使用 `group create 电话 --mode direct` 创建独立连接，再邀请另一端，通过 `group use 电话` 选中。通话过程中需先挂断，才能切换讲话目标。
+
+macOS 支持 `AB17X USB Audio`（USB VID `001f`、PID `0b23`）的话筒按键；Linux 支持同款设备，以及 `USB PnP Audio Device`（VID `0c76`、PID `1203`）。仅在当前选中 `direct` 连接且程序运行时接管匹配设备的消费控制键，不接管普通键盘：
+
+| 状态或按键 | 行为 |
+|---|---|
+| 待机时按播放／暂停 | 拨号；本机播放回铃音，对端播放铃声 |
+| 来电响铃时按播放／暂停 | 接听，开始双向通话 |
+| 拨号中或通话中按播放／暂停 | 取消拨号或挂断 |
+| 音量加／减 | 调整本程序播放增益，每次 2 dB，并保存 |
+
+按住功能键不会反复拨号或立即挂断；松开不触发操作。音量增益范围为 −60 到 +24 dB，不改动对方音量或麦克风增益。按键接管避免同时触发系统播放器或重复调整系统音量。设备拔出后等待重连；`status` 显示按键设备状态。权限不足时，macOS 检查「隐私与安全性 → 输入监控」；Linux 需要对匹配设备的 `/dev/input/event*` 节点有读取权限。
+
+话筒输入与铃声／语音输出独立选择。如果 `AB17X USB Audio` 没有接扬声器或耳机，输出可选择 `Mac mini Speakers`，不要仅因设备名称相同就将它选作输出。`--input`、`--output` 使用 `devices` 中的 ID。
+
+没有硬件按键、其他系统或按键暂时不可用时，可使用命令操作：
+
+```sh
+wirectl talk call dial
+wirectl talk call answer
+wirectl talk call hangup
+wirectl talk call button          # 与功能键相同的状态切换
+wirectl talk call status --json
+```
+
+`status`、`watch` 和 `group status` 显示 `idle`、`dialing`、`ringing`、`active`。未接听的呼叫在 45 秒后结束；6 秒没有收到对端数据时结束通话。重连或重启后保持待机，需要再次拨号、接听。铃声仅在本机播放，不进入传输或收到音频的录音。待机仍打开本机音频设备供电平观察，但不发送音频帧；配置静音仍然生效。
+
 ## 音频设备和扬声器防啸叫
 
 `devices` 默认以表格显示设备名、稳定 ID、输入/输出方向和默认设备标记；没有输入

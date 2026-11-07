@@ -15,12 +15,14 @@ import (
 	"github.com/k0ngk0ng/wire-talk/internal/audio"
 	"github.com/k0ngk0ng/wire-talk/internal/control"
 	"github.com/k0ngk0ng/wire-talk/internal/groups"
+	"github.com/k0ngk0ng/wire-talk/internal/handset"
 	"github.com/k0ngk0ng/wire-talk/internal/media"
 	"github.com/k0ngk0ng/wire-talk/internal/room"
 	"github.com/k0ngk0ng/wire-talk/internal/service"
 )
 
 type sessionStatus struct {
+	Handset      handset.Status  `json:"handset"`
 	OutputGainDB float64         `json:"output_gain_db"`
 	GroupID      string          `json:"room_id"`
 	GroupName    string          `json:"room_name"`
@@ -120,6 +122,9 @@ func printStatus(s sessionStatus, watch bool) {
 		output = "offline; reconnecting"
 	}
 	if watch {
+		if s.Call != nil {
+			fmt.Printf("Call: %s | ", s.Call.State)
+		}
 		fmt.Printf("%s  Online | mic: %s | output: %s | record: %s | file: %s | peers: %d | frames sent: %d received: %d dropped: %d rejected: %d\n",
 			time.Now().Format("15:04:05"), mic, output, s.Media.Recording.State, s.Media.Input.State, len(s.Peers), s.Sent, s.Received, s.Dropped, s.Rejected)
 		return
@@ -131,6 +136,14 @@ func printStatus(s sessionStatus, watch bool) {
 	fmt.Printf("State:       Online\nMicrophone:  %s (%s)\nOutput:      %s (%s)\nListen:      %s\nUptime:      %s\nVersion:     %s\n",
 		cleanText(s.Input), mic, cleanText(s.Output), output, cleanText(s.Listen), uptime, cleanText(s.Version))
 	fmt.Printf("Output gain: %+.1f dB\n", s.OutputGainDB)
+	if s.Call != nil {
+		fmt.Printf("Connection:  direct · %s\n", s.Call.State)
+		if s.Handset.Online {
+			fmt.Printf("Handset:     %s · buttons online\n", cleanText(s.Handset.Device))
+		} else {
+			fmt.Printf("Handset:     %s\n", cleanText(s.Handset.Error))
+		}
+	}
 	if s.GroupID != "" {
 		fmt.Printf("Room:        %s (%s) · current speaking room\n", cleanText(s.GroupName), s.GroupID)
 	}

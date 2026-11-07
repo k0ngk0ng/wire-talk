@@ -34,7 +34,7 @@ _wirectl_talk_completion() {
     esac
 
     if (( COMP_CWORD == command_index )); then
-        COMPREPLY=( $(compgen -W "completion daemon devices group init input invite join levels mute pair record status test unmute update version volume watch" -- "$cur") )
+        COMPREPLY=( $(compgen -W "call completion daemon devices group init input invite join levels mute pair record status test unmute update version volume watch" -- "$cur") )
         return 0
     fi
 
@@ -48,11 +48,15 @@ _wirectl_talk_completion() {
     case "$command" in
         group)
             if (( COMP_CWORD == command_index + 1 )); then
-                COMPREPLY=( $(compgen -W "list status watch levels create join invite use mute unmute rename leave" -- "$cur") )
+                COMPREPLY=( $(compgen -W "list status watch levels create join invite use mute unmute rename mode leave" -- "$cur") )
                 return 0
             fi
+            if [[ "$prev" == --mode ]]; then COMPREPLY=( $(compgen -W "room direct" -- "$cur") ); return 0; fi
             case "$prev" in --code|--name|--listen) return 0 ;; esac
-            COMPREPLY=( $(compgen -W "--json --name --listen --code --state-dir --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--json --name --mode --listen --code --state-dir --help" -- "$cur") )
+            ;;
+        call)
+            COMPREPLY=( $(compgen -W "dial answer hangup button status --group --json --state-dir --help" -- "$cur") )
             ;;
         completion)
             if (( COMP_CWORD == command_index + 1 )); then
@@ -105,13 +109,14 @@ _wirectl_talk_completion() {
             COMPREPLY=( $(compgen -W "--json --state-dir --help" -- "$cur") )
             ;;
         init)
+            if [[ "$prev" == --mode ]]; then COMPREPLY=( $(compgen -W "room direct" -- "$cur") ); return 0; fi
             case "$prev" in
                 --key-file)
                     COMPREPLY=( $(compgen -f -- "$cur") )
                     return 0
                     ;;
             esac
-            options="--listen --input --output --headphones --key-file --peers --state-dir --help"
+            options="--mode --listen --input --output --headphones --key-file --peers --state-dir --help"
             COMPREPLY=( $(compgen -W "$options" -- "$cur") )
             ;;
         pair|join)

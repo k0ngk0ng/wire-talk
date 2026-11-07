@@ -46,6 +46,19 @@ func New(listen string, key []byte) (*Invitation, error) {
 	return newInvitation(listen, key, Lifetime, 10*time.Second)
 }
 
+// Room invitations retain the original 32-byte payload. The authenticated mode
+// marker makes direct invitations fail closed with older clients.
+func NewWithMode(listen string, key []byte, mode string) (*Invitation, error) {
+	if mode != "" && mode != "room" && mode != "direct" {
+		return nil, errors.New("mode must be room or direct")
+	}
+	i, err := New(listen, key)
+	if err == nil && mode == "direct" {
+		i.key = append(i.key, 1)
+	}
+	return i, err
+}
+
 func newInvitation(listen string, key []byte, ttl, attemptTimeout time.Duration) (*Invitation, error) {
 	if len(key) != 32 {
 		return nil, errors.New("room key must be 32 bytes")
@@ -150,6 +163,28 @@ func (i *Invitation) exchange(ctx context.Context, conn net.Conn) (used bool, er
 // Receive obtains the room key but never writes local configuration or opens
 // audio devices. The caller saves it exclusively before starting a session.
 func Receive(ctx context.Context, address, code string) ([]byte, error) {
+	key, mode, err := ReceiveWithMode(ctx, address, code)
+	if err == nil && mode == "direct" {
+		return nil, errors.New("direct invitation requires a mode-aware client")
+	}
+	return key, err
+}
+
+func ReceiveWithMode(ctx context.Context, address, code string) ([]byte, string, error) {
+	payload, err := receivePayload(ctx, address, code)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(payload) == 32 {
+		return payload, "", nil
+	}
+	if len(payload) == 33 && payload[32] == 1 {
+		return payload[:32], "direct", nil
+	}
+	return nil, "", errors.New("invalid pairing mode")
+}
+
+func receivePayload(ctx context.Context, address, code string) ([]byte, error) {
 	if !validCode(code) {
 		return nil, errors.New("pairing code must contain exactly 6 digits")
 	}
@@ -200,7 +235,7 @@ func Receive(ctx context.Context, address, code string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(payload) != aead.NonceSize()+32+aead.Overhead() {
+	if n := len(payload) - aead.NonceSize() - aead.Overhead(); n != 32 && n != 33 {
 		return nil, errors.New("invalid pairing payload")
 	}
 	return aead.Open(nil, payload[:aead.NonceSize()], payload[aead.NonceSize():], []byte(protocol))

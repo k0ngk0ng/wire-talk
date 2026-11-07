@@ -33,6 +33,7 @@ _wirectl_talk_completion() {
     command_index=$((talk_index + 1))
     if (( CURRENT == command_index )); then
         candidates=(
+            'call:dial, answer or hang up a direct call'
             'completion:print bash or zsh completion script'
             'daemon:start, install, stop, or inspect background audio'
             'devices:list audio devices'
@@ -61,18 +62,26 @@ _wirectl_talk_completion() {
     case "$command" in
         group)
             if (( CURRENT == command_index + 1 )); then
-                candidates=(list status watch levels create join invite use mute unmute rename leave)
+                candidates=(list status watch levels create join invite use mute unmute rename mode leave)
                 _describe 'room action' candidates
                 return
             fi
             _arguments -s \
                 '--json[output JSON]' \
+                '--mode[connection mode for create]:mode:(room direct)' \
                 '--name[local room name]:name:' \
                 '--listen[room listen address]:address:' \
                 '--code[temporary pairing code]:code:' \
                 '--state-dir[configuration directory]:directory:_files -/' \
                 '1:room ID, name or inviter address:' \
                 '2:new room name:'
+            ;;
+        call)
+            _arguments -s \
+                '--json[output JSON]' \
+                '--group[target connection]:room:' \
+                '--state-dir[configuration directory]:directory:_files -/' \
+                '1:action:(dial answer hangup button status)'
             ;;
         completion)
             if (( CURRENT == command_index + 1 )); then
@@ -137,6 +146,7 @@ _wirectl_talk_completion() {
             ;;
         init)
             _arguments -s \
+                '--mode[connection mode]:mode:(room direct)' \
                 '--listen[UDP listen address]:address:' \
                 '--input[input device ID]:device ID:' \
                 '--output[output device ID]:device ID:' \

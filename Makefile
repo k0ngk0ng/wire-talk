@@ -13,5 +13,7 @@ test: prepare
 	go test -race ./...
 	python3 scripts/test-session.py
 	python3 scripts/test-media.py
+	python3 scripts/test-groups.py
+	python3 scripts/test-direct.py
 check: test
 	go vet ./...
