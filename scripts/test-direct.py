@@ -58,7 +58,9 @@ class LossyLink:
                 self.sock.sendto(data, target)
             try:
                 data, sender = self.sock.recvfrom(2048)
-            except socket.timeout:
+            except (socket.timeout, ConnectionResetError):
+                # Windows reports ICMP port-unreachable when the fixture peer
+                # stops. Keep the UDP hop alive so its restarted peer can return.
                 continue
             if sender == self.host:
                 target = self.client
